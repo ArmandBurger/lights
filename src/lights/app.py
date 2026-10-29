@@ -1,37 +1,53 @@
 """Interactive TUI for lights (Textual).
 
+Each monitor is drawn as a screen: click its left half (minus) or right
+half (plus) to step brightness by 5, snapping to a multiple of 5 first
+(74 -> 75 -> 80). Click a screen or use the arrow keys to select it.
+
+The lock syncs every monitor to the selected one's brightness; while locked,
+every step (mouse or keyboard) applies the same value to all monitors.
+
 Keys:
-  up/down arrows : select the monitor above/below (wraps)
+  left/right, up/down : select the previous/next monitor (wraps)
   j              : raise the selected monitor's brightness by 10
   k              : lower the selected monitor's brightness by 10
   shift+j        : raise by 15
   shift+k        : lower by 15
+  l              : toggle the lock
   r              : re-detect monitors and refresh now
   q              : quit
 
 Every ddcutil call takes a few hundred milliseconds, so none of them run on
-the UI thread. Key presses update the shown value immediately and queue the
-new target; one writer per monitor applies the latest target, so rapid
-presses collapse into as few writes as possible. All app state is touched on
+the UI thread. Input updates the shown value immediately and queues the
+new target; the target is only written once input on that monitor has been
+quiet for ``DEBOUNCE`` seconds, so a burst of clicks becomes a single write.
+One writer per monitor applies the latest target. All app state is touched on
 the UI thread only; worker threads do I/O and hand results back through
 ``call_from_thread``.
 """
 from __future__ import annotations
 
+from collections.abc import Callable
+import asyncio
 from concurrent.futures import ThreadPoolExecutor
 from typing import ClassVar, Optional
 
+from textual import on
 from textual.app import App, ComposeResult
 from textual.binding import Binding, BindingType
-from textual.widgets import Footer, Header, Static
+from textual.containers import Horizontal
+from textual.timer import Timer
+from textual.widgets import Button, Footer, Header, Static
 
 from . import brightness
 from .monitors import Display, detect
+from .widgets import MonitorScreen
 
 STEP = 10
 STEP_BIG = 15
+CLICK_STEP = 5
 REFRESH = 1.5
-
+DEBOUNCE = 0.5  # seconds of quiet input before a target is written
 Readings = dict[int, Optional[int]]  # bus -> brightness (None: unreadable)
 
 
@@ -52,20 +68,30 @@ def _read_all(buses: list[int]) -> Readings:
 
 class LightsApp(App[None]):
     CSS = """
-    #content {
-        padding: 1;
-        align: left middle;
-        height: 100%;
+    #toolbar {
+        height: 3;
+        align: center middle;
+    }
+    #lock {
+        width: 24;
+    }
+    #status {
+        height: 1fr;
+        content-align: center middle;
+    }
+    #screens {
+        height: 1fr;
     }
     """
 
     BINDINGS: ClassVar[list[BindingType]] = [
-        Binding("up", "select(-1)", "Prev", show=False),
-        Binding("down", "select(1)", "Next", show=False),
+        Binding("left,up", "select(-1)", "Prev", show=False),
+        Binding("right,down", "select(1)", "Next", show=False),
         Binding("j", f"bump({STEP})", f"+{STEP}"),
         Binding("k", f"bump(-{STEP})", f"-{STEP}"),
         Binding("J,shift+j", f"bump({STEP_BIG})", f"+{STEP_BIG}"),
         Binding("K,shift+k", f"bump(-{STEP_BIG})", f"-{STEP_BIG}"),
+        Binding("l", "toggle_lock", "Lock"),
         Binding("r", "reload", "Refresh"),
         Binding("q,enter", "quit", "Quit"),
     ]
@@ -73,23 +99,30 @@ class LightsApp(App[None]):
     def __init__(self) -> None:
         super().__init__()
         self.selected = 0
+        self.locked = False
         self.displays: list[Display] = []
         self.values: Readings = {}
         self.detected = False
         # Targets waiting to be written, and buses whose writer is running.
         self._pending: dict[int, int] = {}
         self._writing: set[int] = set()
+        # Per-bus debounce timers; a bus with a running timer is not written.
+        self._debounce: dict[int, Timer] = {}
         self._polling = False
         # Bumped per completed write so reads that started earlier are dropped.
         self._write_gen: dict[int, int] = {}
 
     def compose(self) -> ComposeResult:
         yield Header(icon="◉")
-        yield Static("detecting monitors…", id="content")
+        with Horizontal(id="toolbar"):
+            yield Button(id="lock")
+        yield Static("detecting monitors…", id="status")
+        yield Horizontal(id="screens")
         yield Footer()
 
     def on_mount(self) -> None:
         self.title = "lights"
+        self._redraw()
         self.action_reload()
         self.set_interval(REFRESH, self._poll)
 
@@ -100,29 +133,32 @@ class LightsApp(App[None]):
         return self._pending.get(bus, self.values.get(bus))
 
     def _redraw(self) -> None:
-        content = self.query_one("#content", Static)
+        lock = self.query_one("#lock", Button)
+        lock.label = "Locked · synced" if self.locked else "Unlocked"
+        lock.variant = "primary" if self.locked else "default"
+
+        status = self.query_one("#status", Static)
+        status.display = not self.displays
         if not self.detected:
-            content.update("detecting monitors…")
-            return
-        if not self.displays:
-            content.update("no monitors responding  (r to retry)")
-            return
-        lines: list[str] = []
-        for pos, d in enumerate(self.displays):
-            val = self._shown(self._bus(d))
-            mark = ">" if pos == self.selected else " "
-            pct = f"{val}%  " if val is not None else "  n/a "
-            lines.append(f"{mark} {d.label:>2}  {d.model:<30}{pct}")
-        lines.append(
-            "\n  j +10  |  k -10  |  shift+j/k +/-15  |  "
-            "up/down select  |  r refresh  |  q quit"
-        )
-        content.update("\n".join(lines))
+            status.update("detecting monitors…")
+        elif not self.displays:
+            status.update("no monitors responding  (r to retry)")
+
+        for pos, screen in enumerate(self.query(MonitorScreen)):
+            bus = screen.bus
+            screen.show(
+                self._shown(bus),
+                writing=bus in self._pending or bus in self._writing,
+                selected=self.locked or pos == self.selected,
+            )
 
     @staticmethod
     def _bus(d: Display) -> int:
         assert d.bus is not None  # only addressable displays are kept
         return d.bus
+
+    def _buses(self) -> list[int]:
+        return [self._bus(d) for d in self.displays]
 
     # -- detection and polling -------------------------------------------
 
@@ -134,11 +170,21 @@ class LightsApp(App[None]):
         values = _read_all([self._bus(d) for d in displays])
         self.call_from_thread(self._loaded, displays, values)
 
-    def _loaded(self, displays: list[Display], values: Readings) -> None:
+    async def _loaded(self, displays: list[Display], values: Readings) -> None:
+        def key(ds: list[Display]) -> list[tuple[Optional[int], str]]:
+            return [(d.bus, d.model) for d in ds]
+
+        changed = key(displays) != key(self.displays)
         self.displays = displays
         self.detected = True
         if self.selected >= len(displays):
             self.selected = 0
+        if changed:
+            screens = self.query_one("#screens", Horizontal)
+            await screens.remove_children()
+            await screens.mount_all(
+                MonitorScreen(d, self._bus(d), CLICK_STEP) for d in displays
+            )
         self._apply_reads(values)
 
     def _poll(self) -> None:
@@ -147,7 +193,7 @@ class LightsApp(App[None]):
         # Skip buses with a write in flight: the bus is busy and the read
         # would race the write.
         buses = [
-            b for b in (self._bus(d) for d in self.displays)
+            b for b in self._buses()
             if b not in self._writing and b not in self._pending
         ]
         if not buses:
@@ -183,27 +229,103 @@ class LightsApp(App[None]):
         self._redraw()
 
     def action_bump(self, delta: int) -> None:
-        if not self.displays:
-            return
-        d = self.displays[self.selected]
-        bus = self._bus(d)
+        if self.displays:
+            bus = self._bus(self.displays[self.selected])
+            self._step(bus, lambda v: v + delta)
+
+    @on(MonitorScreen.Step)
+    def _on_screen_step(self, message: MonitorScreen.Step) -> None:
+        self._select_bus(message.bus)
+        delta = message.delta
+        self._step(message.bus, lambda v: brightness.snap_step(v, delta))
+
+    @on(MonitorScreen.Selected)
+    def _on_screen_selected(self, message: MonitorScreen.Selected) -> None:
+        self._select_bus(message.bus)
+        self._redraw()
+
+    def _select_bus(self, bus: int) -> None:
+        self.selected = self._buses().index(bus)
+
+    def _step(self, bus: int, compute: Callable[[int], int]) -> None:
+        """Move ``bus`` (or every monitor, when locked) to ``compute(value)``."""
         base = self._shown(bus)
         if base is None:
-            self.notify(f"display {d.label}: brightness unknown", severity="error")
+            label = self.displays[self._buses().index(bus)].label
+            self.notify(f"display {label}: brightness unknown", severity="error")
             return
-        self._pending[bus] = brightness.clamp(base + delta)
+        target = brightness.clamp(compute(base))
+        for b in self._buses() if self.locked else [bus]:
+            self._set_target(b, target)
         self._redraw()
-        if bus not in self._writing:
+
+    @on(Button.Pressed, "#lock")
+    def action_toggle_lock(self) -> None:
+        if self.locked:
+            self.locked = False
+        elif self.displays:
+            bus = self._bus(self.displays[self.selected])
+            base = self._shown(bus)
+            if base is None:
+                self.notify("cannot lock: brightness unknown", severity="error")
+                return
+            self.locked = True
+            for b in self._buses():
+                if self._shown(b) != base:
+                    self._set_target(b, base)
+            self.notify(f"locked: all monitors at {base}%")
+        self._redraw()
+
+    def _set_target(self, bus: int, value: int) -> None:
+        """Queue ``value`` for ``bus``; it is written after ``DEBOUNCE``."""
+        self._pending[bus] = value
+        # Restart the countdown from now. (Timer.reset() would only restart
+        # once the current interval has run out, stretching the delay.)
+        timer = self._debounce.get(bus)
+        if timer is not None:
+            timer.stop()
+        self._debounce[bus] = self.set_timer(
+            DEBOUNCE, lambda: self._debounce_elapsed(bus)
+        )
+
+    def _debounce_elapsed(self, bus: int) -> None:
+        """Debounce elapsed: start the writer unless one is already running."""
+        self._debounce.pop(bus, None)
+        # Input that netted out (e.g. + then -) needs no write.
+        if bus not in self._writing and self._pending.get(bus) == self.values.get(bus):
+            del self._pending[bus]
+            self._redraw()
+            return
+        if bus in self._pending and bus not in self._writing:
             self._writing.add(bus)
             self.run_worker(
                 lambda: self._write_loop(bus), thread=True, group=f"write-{bus}"
             )
 
+    async def action_quit(self) -> None:
+        """Write any still-debouncing targets before exiting."""
+        for timer in self._debounce.values():
+            timer.stop()
+        self._debounce.clear()
+        pending = dict(self._pending)
+        if pending:
+            def write_all() -> None:
+                for bus, value in pending.items():
+                    try:
+                        brightness.set_value(bus, value)
+                    except brightness.DdcError:
+                        pass
+
+            await asyncio.to_thread(write_all)
+        self.exit()
+
     # -- writer (worker thread) ------------------------------------------
 
     def _next_target(self, bus: int) -> Optional[int]:
         target = self._pending.get(bus)
-        if target is None:
+        # New input arrived during the last write: let its debounce finish;
+        # _debounce_elapsed starts a fresh writer.
+        if target is None or bus in self._debounce:
             self._writing.discard(bus)
         return target
 

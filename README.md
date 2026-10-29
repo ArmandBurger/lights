@@ -65,18 +65,31 @@ An unknown target prints a clean `error: unknown target '...'` (exit 1).
 
 ## TUI (`lights app`)
 
-Shows each monitor as a row with its live brightness; the selected row is
-prefixed with `>`. Values refresh automatically every 1.5 s in the background;
-key presses update the screen immediately and the write to the monitor follows
-(rapid presses are merged into a single write).
+Each monitor is drawn as a screen, side by side, with its name and info
+underneath (model, brightness, display number, connector, I2C bus).
+
+**Mouse:** click the left half of a screen (**−**) or the right half (**+**)
+to step its brightness by **5**. Off-grid values settle on the next multiple
+of 5 first: 74 → 75 → 80 going up, 74 → 70 → 65 going down. Clicking a
+screen also selects it.
+
+**Lock:** the *Unlocked / Locked* button at the top (or `l`) syncs every
+monitor to the selected monitor's brightness. While locked, every step —
+mouse or keyboard — applies the same value to all monitors.
+
+Values refresh automatically every 1.5 s in the background. Input updates
+the screen immediately; the monitor is written once input on it has been
+quiet for 500 ms (debounce), so a burst of clicks costs a single ddcutil
+call. Pending changes are still written if you quit within that window.
 
 | Key | Action |
 |-----|--------|
-| `↑` / `↓` | Select the monitor above / below (wraps). |
+| `←` / `→` (or `↑` / `↓`) | Select the previous / next monitor (wraps). |
 | `j` | Raise the selected monitor by **10**. |
 | `k` | Lower the selected monitor by **10**. |
 | `shift+j` | Raise the selected monitor by **15**. |
 | `shift+k` | Lower the selected monitor by **15**. |
+| `l` | Toggle the lock. |
 | `r` | Re-detect monitors and refresh now. |
 | `q` / `Enter` | Quit. |
 
@@ -99,7 +112,8 @@ uv run lights app   # or: .venv/bin/lights app
 - After detection, monitors are addressed by I2C bus (`ddcutil --bus N`)
   rather than `--display N`, which would make ddcutil re-probe every bus on
   each call (~0.75 s vs ~0.35 s per call). Commands on several displays run
-  in parallel.
+  in parallel. Calls on the same bus are serialised, since overlapping
+  calls make the monitor drop commands.
 
 ## File layout
 
@@ -112,7 +126,8 @@ lights/
     ├── brightness.py    # get/set/bump via ddcutil (VCP 0x10)
     ├── monitors.py      # `ddcutil detect` parser
     ├── cli.py           # argparse subcommands + target resolution
-    └── app.py           # Textual TUI
+    ├── app.py           # Textual TUI
+    └── widgets.py       # clickable monitor screens for the TUI
 ```
 
 ## Roadmap

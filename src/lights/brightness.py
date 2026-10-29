@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import re
 import subprocess
+import threading
 import time
 
 VCP_CODE = "0x10"  # Brightness
@@ -17,11 +18,23 @@ class DdcError(RuntimeError):
     pass
 
 
+# One ddcutil call per bus at a time: overlapping calls on the same bus
+# (e.g. a background read during a write) make the monitor drop commands.
+_locks_guard = threading.Lock()
+_bus_locks: dict[int, threading.Lock] = {}
+
+
+def _bus_lock(bus: int) -> threading.Lock:
+    with _locks_guard:
+        return _bus_locks.setdefault(bus, threading.Lock())
+
+
 def _run(args: list[str], bus: int) -> str:
     cmd = ["ddcutil", "--bus", str(bus)] + args
-    p = subprocess.run(
-        cmd, capture_output=True, text=True, encoding="utf-8", errors="replace"
-    )
+    with _bus_lock(bus):
+        p = subprocess.run(
+            cmd, capture_output=True, text=True, encoding="utf-8", errors="replace"
+        )
     return (p.stdout + "\n" + p.stderr).strip()
 
 
@@ -51,6 +64,18 @@ def clamp(value: int) -> int:
     return max(0, min(100, value))
 
 
+def snap_step(value: int, delta: int) -> int:
+    """Step by ``delta``, landing on a multiple of ``|delta|``.
+
+    An off-grid value settles on the next grid point first, so with a step
+    of 5: 74 +5 -> 75, 75 +5 -> 80, 74 -5 -> 70, 70 -5 -> 65.
+    """
+    step = abs(delta)
+    if delta > 0:
+        return clamp((value // step + 1) * step)
+    return clamp((-(-value // step) - 1) * step)
+
+
 def get_value(bus: int) -> int:
     line = _get_line(bus)
     m = _CURRENT.search(line)
@@ -66,7 +91,7 @@ def set_value(bus: int, value: int) -> int:
     so there is no separate read-back.
     """
     value = clamp(value)
-    text = _run(["setvcp", VCP_CODE, str(value)], bus)
+    text = _run(["--verify", "setvcp", VCP_CODE, str(value)], bus)
     if not _set_ok(text):
         raise DdcError(f"cannot set brightness on bus {bus}: {text!r}")
     return value
