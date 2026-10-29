@@ -37,6 +37,22 @@ def notice(show_w: str, show_c: str) -> str:
         f"under certain conditions; {show_c} for details."
     )
 
+def notice_gui() -> str:
+    """The licence notice for the GUI's About dialog."""
+    return f"""\
+{COPYRIGHT}
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License (below) for more details."""
+
+
 VERSION_TEXT = f"""\
 {COPYRIGHT}
 License GPLv3+: GNU GPL version 3 or later <https://gnu.org/licenses/gpl.html>.

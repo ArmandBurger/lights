@@ -7,8 +7,8 @@ name = "lights"
 version = "0.1.0"
 description = "Brightness controller for two monitors via ddcutil"
 readme = "README.md"
-license = "GPL-3.0-or-later"
-license-files = ["LICENSE", "THIRD_PARTY_NOTICES.md"]
+license = "GPL-3.0-or-later AND MIT"
+license-files = ["LICENSE", "THIRD_PARTY_NOTICES.md", "src/lights/icons/LICENSE-fluentui-system-icons"]
 authors = [{ name = "Armand Burger" }]
 requires-python = ">=3.10"
 dependencies = [
@@ -17,6 +17,27 @@ dependencies = [
 
 [project.scripts]
 lights = "lights.cli:main"
+
+[project.gui-scripts]
+lights-gui = "lights.gui:main"
+
+[dependency-groups]
+# Type stubs for PyGObject (GTK 4). PyGObject itself comes from the system
+# (python3-gi); create the venv with `uv venv --system-site-packages`.
+dev = ["pygobject-stubs>=2.13"]
+
+[tool.uv]
+# Use the system PyGObject/pycairo; never build them from PyPI.
+override-dependencies = [
+    "pygobject; sys_platform == 'never'",
+    "pycairo; sys_platform == 'never'",
+]
+
+[tool.uv.config-settings-package]
+pygobject-stubs = { config = "Gtk4,Gdk4" }
+
+[tool.setuptools.package-data]
+lights = ["icons/hicolor/scalable/actions/*.svg", "icons/LICENSE-fluentui-system-icons"]
 
 [tool.setuptools.packages.find]
 where = ["src"]

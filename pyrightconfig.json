@@ -1,6 +1,9 @@
 {
-  "include": ["src"],
+  "include": [
+    "src"
+  ],
   "venvPath": ".",
   "venv": ".venv",
-  "typeCheckingMode": "strict"
+  "typeCheckingMode": "strict",
+  "reportMissingModuleSource": "none"
 }

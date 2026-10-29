@@ -99,17 +99,22 @@ def get_value(bus: int) -> int:
     raise DdcError(f"cannot read brightness on bus {bus}: {line!r}")
 
 
-def set_value(bus: int, value: int) -> int:
+def set_value(bus: int, value: int, retries: int = 2, delay: float = 0.25) -> int:
     """Set brightness and return the value written.
 
     ddcutil verifies the write itself and reports a mismatch as an error,
-    so there is no separate read-back.
+    so there is no separate read-back. Monitors occasionally drop a write,
+    so failures are retried like reads.
     """
     value = clamp(value)
-    text = _run(["--verify", "setvcp", VCP_CODE, str(value)], bus)
-    if not _set_ok(text):
-        raise DdcError(f"cannot set brightness on bus {bus}: {text!r}")
-    return value
+    text = ""
+    for attempt in range(retries + 1):
+        if attempt:
+            time.sleep(delay)
+        text = _run(["--verify", "setvcp", VCP_CODE, str(value)], bus)
+        if _set_ok(text):
+            return value
+    raise DdcError(f"cannot set brightness on bus {bus}: {text!r}")
 
 
 def bump_value(bus: int, delta: int) -> int:

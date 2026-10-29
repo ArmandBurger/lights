@@ -9,12 +9,14 @@ which remains under its own license.
 - Source: <https://github.com/microsoft/fluentui-system-icons>
 - License: MIT
 - Copyright (c) 2020 Microsoft Corporation
-- Files (in `assets/`):
-  - `ic_fluent_add_24_filled.svg`
-  - `ic_fluent_subtract_24_filled.svg`
-  - `ic_fluent_brightness_high_24_filled.svg`
-  - `ic_fluent_brightness_low_24_filled.svg`
-- Modifications: fill colour changed from `#212121` to `#ffffff`.
+- Files (in `src/lights/icons/hicolor/scalable/actions/`, renamed with a
+  `-symbolic` suffix):
+  - `ic_fluent_add_24_filled-symbolic.svg`
+  - `ic_fluent_subtract_24_filled-symbolic.svg`
+  - `ic_fluent_brightness_high_24_filled-symbolic.svg`
+  - `ic_fluent_brightness_low_24_filled-symbolic.svg`
+- Modifications: fill colour changed from `#212121` to `#ffffff`; files
+  renamed. The UI recolours them to match the desktop theme.
 
 `lights` is not made, affiliated with or endorsed by Microsoft.
 

@@ -140,6 +140,20 @@ def cmd_show(what: str) -> int:
     return 0
 
 
+def cmd_gui() -> int:
+    try:
+        from .gui import main
+    except (ImportError, ValueError) as exc:
+        print(
+            f"error: GTK 4 is not available ({exc}).\n"
+            "Install PyGObject and GTK 4, e.g. on Debian/Ubuntu/Mint:\n"
+            "  sudo apt install python3-gi gir1.2-gtk-4.0",
+            file=sys.stderr,
+        )
+        return 1
+    return main()
+
+
 def cmd_app() -> int:
     from .app import main
 
@@ -181,6 +195,7 @@ def main() -> int:
     d.add_argument("step", nargs="?", type=int, default=brightness.DEFAULT_STEP)
 
     sub.add_parser("app", help="launch the interactive TUI")
+    sub.add_parser("gui", help="launch the desktop (GTK 4) UI")
 
     sh = sub.add_parser(
         "show",
@@ -203,6 +218,8 @@ def main() -> int:
             return cmd_up(args.target, args.step)
         if cmd == "app":
             return cmd_app()
+        if cmd == "gui":
+            return cmd_gui()
         if cmd == "show":
             return cmd_show(args.what)
         return cmd_down(args.target, args.step)
