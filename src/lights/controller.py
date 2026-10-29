@@ -42,7 +42,7 @@ from . import brightness
 from .monitors import Display, detect
 
 REFRESH = 1.5
-DEBOUNCE = 0.5  # seconds of quiet input before a target is written
+DEBOUNCE = 0.3  # seconds of quiet input before a target is written
 MAX_COLUMNS = 4
 MAX_MONITORS = MAX_COLUMNS * MAX_COLUMNS  # shown as at most a 4x4 grid
 

@@ -96,7 +96,7 @@ keyboard — applies the same value to all monitors.
 
 Values refresh automatically every 1.5 s in the background. Input updates
 the screen immediately; the monitor is written once input on it has been
-quiet for 500 ms (debounce), so a burst of input costs a single ddcutil
+quiet for 300 ms (debounce), so a burst of input costs a single ddcutil
 call. Pending changes are still written if you quit within that window.
 
 **Keys** (vim-style; a count repeats a motion, as in vim):
