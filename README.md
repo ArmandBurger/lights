@@ -136,3 +136,25 @@ Phase 1 (this release): brightness-only CLI + interactive TUI.
 
 Planned: a general (non-terminal) UI, and a Cinnamon panel applet with
 desktop shortcuts.
+
+## License
+
+Copyright (C) 2026 Armand Burger
+
+This program is free software: you can redistribute it and/or modify it
+under the terms of the GNU General Public License as published by the Free
+Software Foundation, either version 3 of the License, or (at your option)
+any later version. See [LICENSE](LICENSE) for the full text.
+
+This program is distributed in the hope that it will be useful, but
+WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
+or FITNESS FOR A PARTICULAR PURPOSE.
+
+`lights show w` prints the warranty disclaimer and `lights show c` the
+license conditions; in the TUI, press `w` / `c`. `lights --version` shows
+the copyright notice.
+
+Contact: [@ArmandBurger](https://github.com/ArmandBurger) on GitHub, [@ghastly_dev](https://x.com/ghastly_dev) on Twitter/X.
+
+`lights` runs [ddcutil](https://www.ddcutil.com/) (GPL-2.0-or-later) as a
+separate program; it is not bundled.

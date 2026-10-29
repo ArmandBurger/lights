@@ -1,3 +1,18 @@
+# lights - brightness controller for monitors via ddcutil
+# Copyright (C) 2026  Armand Burger
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """Interactive TUI for lights (Textual).
 
 Each monitor is drawn as a screen: click its left half (minus) or right
@@ -14,6 +29,7 @@ Keys:
   shift+j        : raise by 15
   shift+k        : lower by 15
   l              : toggle the lock
+  w / c          : show the warranty / the licence conditions (GPL v3)
   r              : re-detect monitors and refresh now
   q              : quit
 
@@ -39,9 +55,9 @@ from textual.containers import Horizontal
 from textual.timer import Timer
 from textual.widgets import Button, Footer, Header, Static
 
-from . import brightness
+from . import brightness, legal
 from .monitors import Display, detect
-from .widgets import MonitorScreen
+from .widgets import LegalScreen, MonitorScreen
 
 STEP = 10
 STEP_BIG = 15
@@ -82,6 +98,11 @@ class LightsApp(App[None]):
     #screens {
         height: 1fr;
     }
+    #notice {
+        height: auto;
+        padding: 0 2;
+        color: $text-muted;
+    }
     """
 
     BINDINGS: ClassVar[list[BindingType]] = [
@@ -93,6 +114,8 @@ class LightsApp(App[None]):
         Binding("K,shift+k", f"bump(-{STEP_BIG})", f"-{STEP_BIG}"),
         Binding("l", "toggle_lock", "Lock"),
         Binding("r", "reload", "Refresh"),
+        Binding("w", "show_warranty", "Warranty", show=False),
+        Binding("c", "show_conditions", "License", show=False),
         Binding("q,enter", "quit", "Quit"),
     ]
 
@@ -118,6 +141,7 @@ class LightsApp(App[None]):
             yield Button(id="lock")
         yield Static("detecting monitors…", id="status")
         yield Horizontal(id="screens")
+        yield Static(legal.notice("press w", "press c"), id="notice", markup=False)
         yield Footer()
 
     def on_mount(self) -> None:
@@ -125,6 +149,12 @@ class LightsApp(App[None]):
         self._redraw()
         self.action_reload()
         self.set_interval(REFRESH, self._poll)
+
+    def action_show_warranty(self) -> None:
+        self.push_screen(LegalScreen("Warranty", legal.WARRANTY))
+
+    def action_show_conditions(self) -> None:
+        self.push_screen(LegalScreen("GNU General Public License v3", legal.license_text()))
 
     # -- drawing ---------------------------------------------------------
 

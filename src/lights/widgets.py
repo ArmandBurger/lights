@@ -1,3 +1,18 @@
+# lights - brightness controller for monitors via ddcutil
+# Copyright (C) 2026  Armand Burger
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """Clickable monitor widgets for the TUI.
 
 Each monitor is drawn as a "screen": a rounded box split by a vertical
@@ -8,12 +23,14 @@ with the display's name and info underneath. Clicking a half posts
 """
 from __future__ import annotations
 
-from typing import Optional
+from typing import ClassVar, Optional
 
 from textual import events
 from textual.app import ComposeResult
-from textual.containers import Horizontal
+from textual.binding import Binding, BindingType
+from textual.containers import Horizontal, VerticalScroll
 from textual.message import Message
+from textual.screen import ModalScreen
 from textual.widget import Widget
 from textual.widgets import Static
 
@@ -132,3 +149,36 @@ class MonitorScreen(Widget):
             f"[dim]display {d.label} · {d.connector} · {bus_name}[/dim]"
         )
         self.set_class(selected, "-selected")
+
+
+class LegalScreen(ModalScreen[None]):
+    """Scrollable view of the warranty or the licence; Esc/q closes it."""
+
+    DEFAULT_CSS = """
+    LegalScreen {
+        align: center middle;
+    }
+    LegalScreen > VerticalScroll {
+        width: 84;
+        max-width: 100%;
+        height: 90%;
+        border: round $accent;
+        background: $surface;
+        padding: 0 1;
+    }
+    """
+
+    BINDINGS: ClassVar[list[BindingType]] = [
+        Binding("escape,q,w,c", "dismiss", "Close"),
+    ]
+
+    def __init__(self, title: str, text: str) -> None:
+        super().__init__()
+        self.title_text = title
+        self.text = text
+
+    def compose(self) -> ComposeResult:
+        with VerticalScroll() as scroll:
+            scroll.border_title = self.title_text
+            scroll.border_subtitle = "Esc to close"
+            yield Static(self.text, markup=False)

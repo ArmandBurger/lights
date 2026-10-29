@@ -1,3 +1,18 @@
+# lights - brightness controller for monitors via ddcutil
+# Copyright (C) 2026  Armand Burger
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """lights CLI: detect, info, get, set, up, down."""
 from __future__ import annotations
 
@@ -8,7 +23,8 @@ from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from typing import Union
 
-from . import brightness, monitors
+from . import brightness, legal, monitors
+from . import __version__
 from .monitors import Display
 
 # A value read/written, or the error that prevented it.
@@ -118,6 +134,11 @@ def cmd_down(target: str, step: int) -> int:
     return _apply(target, lambda bus: brightness.bump_value(bus, -step))
 
 
+def cmd_show(what: str) -> int:
+    print(legal.WARRANTY if what == "w" else legal.license_text(), end="")
+    return 0
+
+
 def cmd_app() -> int:
     from .app import main
 
@@ -129,6 +150,13 @@ def main() -> int:
     p = argparse.ArgumentParser(
         prog="lights",
         description="Brightness controller for monitors via ddcutil",
+        epilog=legal.notice("type `lights show w'", "type `lights show c'"),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    p.add_argument(
+        "--version",
+        action="version",
+        version=f"lights {__version__}\n{legal.VERSION_TEXT}",
     )
     sub = p.add_subparsers(dest="cmd", required=True)
 
@@ -153,6 +181,9 @@ def main() -> int:
 
     sub.add_parser("app", help="launch the interactive TUI")
 
+    sh = sub.add_parser("show", help="show the warranty (w) or licence conditions (c)")
+    sh.add_argument("what", choices=["w", "c"])
+
     args = p.parse_args()
     cmd: str = args.cmd
     try:
@@ -168,6 +199,8 @@ def main() -> int:
             return cmd_up(args.target, args.step)
         if cmd == "app":
             return cmd_app()
+        if cmd == "show":
+            return cmd_show(args.what)
         return cmd_down(args.target, args.step)
     except ValueError as exc:
         print(f"error: {exc}", file=sys.stderr)
