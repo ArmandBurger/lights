@@ -35,7 +35,7 @@ from textual.containers import Horizontal
 from textual.widgets import Button, Header, Static
 
 from . import legal
-from .controller import Controller
+from .controller import Controller, grid_shape
 from .keys import HELP, HELP_LINE, STEP, Action, VimKeys
 from .widgets import LegalScreen, MonitorScreen
 
@@ -55,6 +55,14 @@ class LightsApp(App[None]):
     }
     #screens {
         height: 1fr;
+        layout: grid;
+        grid-size: 1 1;
+    }
+    #screens.-dense MonitorScreen {
+        margin: 0 1;
+    }
+    #screens.-dense MonitorScreen .divider {
+        margin: 1 0;
     }
     #notice {
         height: auto;
@@ -130,6 +138,15 @@ class LightsApp(App[None]):
             self._layout = view.layout
             screens = self.query_one("#screens", Horizontal)
             await screens.remove_children()
+            columns, rows = grid_shape(len(view.monitors))
+            screens.styles.grid_size_columns = columns
+            screens.styles.grid_size_rows = rows
+            screens.set_class(rows > 1, "-dense")
+            # Tall grids need the rows: shorten the licence notice to one line.
+            self.query_one("#notice", Static).update(
+                legal.notice_short("press w", "press c") if rows > 2
+                else legal.notice("press w", "press c")
+            )
             await screens.mount_all(
                 MonitorScreen(m.display, m.bus, STEP) for m in view.monitors
             )

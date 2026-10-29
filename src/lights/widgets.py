@@ -37,34 +37,42 @@ from textual.widgets import Static
 from .monitors import Display
 
 # Terminal cells are about twice as tall as wide, so glyphs are drawn wide.
-_PLUS = "\n".join(
-    [
+# Each zone uses the largest glyph that fits: (min width, min height, glyph).
+_PLUS = [
+    (12, 5, "\n".join([
         "    ██    ",
         "    ██    ",
         "██████████",
         "    ██    ",
         "    ██    ",
-    ]
-)
-_MINUS = "\n".join(
-    [
-        "          ",
-        "          ",
-        "██████████",
-        "          ",
-        "          ",
-    ]
-)
+    ])),
+    (10, 3, "\n".join([
+        "   ██   ",
+        "████████",
+        "   ██   ",
+    ])),
+    (0, 0, "+"),
+]
+_MINUS = [
+    (12, 5, "██████████"),
+    (10, 3, "████████"),
+    (0, 0, "−"),
+]
 
 
 class StepZone(Static):
     """One clickable half of a screen."""
 
     def __init__(self, bus: int, delta: int) -> None:
-        super().__init__(_PLUS if delta > 0 else _MINUS)
+        super().__init__()  # glyph is chosen on resize
         self.bus = bus
         self.delta = delta
         self.add_class("plus" if delta > 0 else "minus")
+
+    def on_resize(self, event: events.Resize) -> None:
+        glyphs = _PLUS if self.delta > 0 else _MINUS
+        width, height = event.size.width, event.size.height
+        self.update(next(g for w, h, g in glyphs if width >= w and height >= h))
 
     def on_click(self, event: events.Click) -> None:
         event.stop()
@@ -89,7 +97,7 @@ class MonitorScreen(Widget):
     }
     MonitorScreen StepZone {
         width: 1fr;
-        height: 1fr;
+        height: 100%;
         content-align: center middle;
     }
     MonitorScreen StepZone:hover {
@@ -104,9 +112,11 @@ class MonitorScreen(Widget):
     }
     MonitorScreen > .caption {
         width: 1fr;
-        height: 3;
+        height: auto;
         content-align: center top;
         text-align: center;
+        text-wrap: nowrap;
+        text-overflow: ellipsis;
     }
     """
 

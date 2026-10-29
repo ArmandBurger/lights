@@ -31,12 +31,13 @@ from typing import Optional
 import gi
 
 gi.require_version("Gdk", "4.0")
+gi.require_version("Graphene", "1.0")
 gi.require_version("Gtk", "4.0")
 gi.require_version("Pango", "1.0")
-from gi.repository import Gdk, Gio, GLib, Gtk, Pango  # noqa: E402
+from gi.repository import Gdk, Gio, GLib, Graphene, Gtk, Pango  # noqa: E402
 
 from . import __version__, legal  # noqa: E402
-from .controller import Controller, MonitorView  # noqa: E402
+from .controller import Controller, MonitorView, grid_shape  # noqa: E402
 from .keys import HELP, STEP, Action, VimKeys  # noqa: E402
 
 APP_ID = "io.github.armandburger.lights"
@@ -48,6 +49,15 @@ ICON_SUBTRACT = "ic_fluent_subtract_24_filled-symbolic"
 ICON_HIGH = "ic_fluent_brightness_high_24_filled-symbolic"
 ICON_LOW = "ic_fluent_brightness_low_24_filled-symbolic"
 MESSAGE_SECONDS = 4
+
+# Window sizing: each monitor card is about CARD_WIDTH x CARD_HEIGHT at the
+# requested size; the window never asks for more than SCREEN_FRACTION of the
+# screen. Cards and icons shrink and grow with the window after that.
+CARD_WIDTH = 280
+CARD_HEIGHT = 200
+GAP = 16
+CHROME_HEIGHT = 84  # header bar + status bar
+SCREEN_FRACTION = 0.9
 
 CSS = """
 .screen {
@@ -61,13 +71,15 @@ CSS = """
     background: none;
     border: none;
     box-shadow: none;
-    min-height: 160px;
+    min-height: 0;
+    min-width: 0;
+    padding: 0;
 }
 .screen button.step.minus { border-radius: 12px 0 0 12px; }
 .screen button.step.plus { border-radius: 0 12px 12px 0; }
 .screen button.step:hover { background: alpha(currentColor, 0.07); }
 .screen button.step:active { background: alpha(currentColor, 0.14); }
-.screen button.step:hover image { color: @theme_selected_bg_color; }
+.screen button.step:hover { color: @theme_selected_bg_color; }
 .model { font-size: 13pt; font-weight: bold; }
 .level { font-size: 13pt; font-weight: bold; color: @theme_selected_bg_color; }
 .info { opacity: 0.6; }
@@ -87,6 +99,51 @@ _KEY_NAMES = {
 }
 
 
+class ScalableIcon(Gtk.Widget):
+    """A symbolic theme icon drawn to fit the space it is given.
+
+    Gtk.Image draws at a fixed pixel size that is also its minimum size, which
+    would stop the window from shrinking; this widget scales the icon to
+    ``fraction`` of its smaller side instead, in the theme's text colour.
+    """
+
+    __gtype_name__ = "LightsScalableIcon"
+    LOAD_SIZE = 128  # rasterised once at this size, then scaled down
+
+    def __init__(self, icon_name: str, fraction: float, max_size: int) -> None:
+        super().__init__(hexpand=True, vexpand=True)
+        self._icon_name = icon_name
+        self._fraction = fraction
+        self._max_size = max_size
+        self._paintable: Optional[Gtk.IconPaintable] = None
+        self._scale = 0
+
+    def do_measure(
+        self, orientation: object, for_size: int
+    ) -> tuple[int, int, int, int]:
+        return 16, 48, -1, -1
+
+    def do_snapshot(self, snapshot: Gtk.Snapshot) -> None:
+        width, height = self.get_width(), self.get_height()
+        size = min(min(width, height) * self._fraction, self._max_size)
+        if size < 1:
+            return
+        scale = self.get_scale_factor()
+        if self._paintable is None or scale != self._scale:
+            theme = Gtk.IconTheme.get_for_display(self.get_display())
+            self._paintable = theme.lookup_icon(
+                self._icon_name, None, self.LOAD_SIZE, scale,
+                Gtk.TextDirection.NONE, Gtk.IconLookupFlags(0),
+            )
+            self._scale = scale
+        offset = Graphene.Point()
+        offset.init((width - size) / 2, (height - size) / 2)
+        snapshot.save()
+        snapshot.translate(offset)
+        self._paintable.snapshot_symbolic(snapshot, size, size, [self.get_color()])
+        snapshot.restore()
+
+
 class MonitorCard(Gtk.Box):
     """One monitor: a screen with minus/plus halves and a caption."""
 
@@ -96,7 +153,9 @@ class MonitorCard(Gtk.Box):
         on_step: Callable[[int, int], None],
         on_select: Callable[[int], None],
     ) -> None:
-        super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=12, hexpand=True)
+        super().__init__(
+            orientation=Gtk.Orientation.VERTICAL, spacing=6, hexpand=True, vexpand=True
+        )
         self.bus = view.bus
         self._on_step = on_step
 
@@ -108,7 +167,7 @@ class MonitorCard(Gtk.Box):
         self.screen.append(minus)
         self.screen.append(
             Gtk.Separator(
-                orientation=Gtk.Orientation.VERTICAL, margin_top=28, margin_bottom=28
+                orientation=Gtk.Orientation.VERTICAL, margin_top=16, margin_bottom=16
             )
         )
         self.screen.append(plus)
@@ -118,7 +177,13 @@ class MonitorCard(Gtk.Box):
         caption = Gtk.Box(spacing=8, halign=Gtk.Align.CENTER)
         self.level_icon = Gtk.Image(pixel_size=20)
         self.level = Gtk.Label(css_classes=["level"])
-        caption.append(Gtk.Label(label=d.model or "unknown", css_classes=["model"]))
+        caption.append(
+            Gtk.Label(
+                label=d.model or "unknown",
+                css_classes=["model"],
+                ellipsize=Pango.EllipsizeMode.END,
+            )
+        )
         caption.append(self.level_icon)
         caption.append(self.level)
         self.append(caption)
@@ -127,6 +192,7 @@ class MonitorCard(Gtk.Box):
             Gtk.Label(
                 label=f"display {d.label} · {d.connector} · {bus_name}",
                 css_classes=["info"],
+                ellipsize=Pango.EllipsizeMode.END,
             )
         )
 
@@ -144,7 +210,7 @@ class MonitorCard(Gtk.Box):
     @staticmethod
     def _half(icon: str, side: str, tooltip: str) -> Gtk.Button:
         return Gtk.Button(
-            child=Gtk.Image(icon_name=icon, pixel_size=72),
+            child=ScalableIcon(icon, fraction=0.5, max_size=96),
             css_classes=["step", side],
             hexpand=True,
             focus_on_click=False,
@@ -165,12 +231,33 @@ class MonitorCard(Gtk.Box):
             self.screen.remove_css_class("selected")
 
 
+def _window_size(
+    columns: int, rows: int, display: Optional[Gdk.Display] = None
+) -> tuple[int, int]:
+    """Window size that fits a grid of cards, capped to the screen."""
+    width = columns * CARD_WIDTH + (columns + 1) * GAP
+    height = rows * CARD_HEIGHT + (rows + 1) * GAP + CHROME_HEIGHT
+    display = display or Gdk.Display.get_default()
+    if display is not None:
+        monitors = display.get_monitors()
+        monitor = monitors.get_item(0)
+        if isinstance(monitor, Gdk.Monitor):
+            area = monitor.get_geometry()
+            width = min(width, int(area.width * SCREEN_FRACTION))
+            height = min(height, int(area.height * SCREEN_FRACTION))
+    return width, height
+
+
 class LightsWindow(Gtk.ApplicationWindow):
     def __init__(self, app: Gtk.Application) -> None:
-        super().__init__(application=app, title="lights", default_width=920, default_height=460)
+        width, height = _window_size(*grid_shape(2))
+        super().__init__(
+            application=app, title="lights", default_width=width, default_height=height
+        )
         self.controller = Controller(self._on_change, self._on_report)
         self.vim = VimKeys()
         self._layout = -1
+        self._shape = (0, 0)
         self._cards: list[MonitorCard] = []
         self._sync_queued = False
         self._message_token = 0
@@ -199,9 +286,10 @@ class LightsWindow(Gtk.ApplicationWindow):
         self.stack = Gtk.Stack(vexpand=True)
         self.status = Gtk.Label(label="detecting monitors…", css_classes=["title-2"])
         self.stack.add_named(self.status, "status")
-        self.monitors = Gtk.Box(
-            spacing=24, homogeneous=True,
-            margin_top=24, margin_bottom=24, margin_start=24, margin_end=24,
+        self.monitors = Gtk.Grid(
+            row_homogeneous=True, column_homogeneous=True,
+            row_spacing=GAP, column_spacing=GAP,
+            margin_top=GAP, margin_bottom=GAP, margin_start=GAP, margin_end=GAP,
         )
         self.stack.add_named(self.monitors, "monitors")
 
@@ -258,8 +346,12 @@ class LightsWindow(Gtk.ApplicationWindow):
                 MonitorCard(m, self._on_card_step, self.controller.select_bus)
                 for m in view.monitors
             ]
-            for card in self._cards:
-                self.monitors.append(card)
+            columns, rows = grid_shape(len(self._cards))
+            for i, card in enumerate(self._cards):
+                self.monitors.attach(card, i % columns, i // columns, 1, 1)
+            if self._cards and (columns, rows) != self._shape:
+                self._shape = (columns, rows)
+                self.set_default_size(*_window_size(columns, rows, self.get_display()))
         for card, m in zip(self._cards, view.monitors):
             card.update(m)
         return GLib.SOURCE_REMOVE

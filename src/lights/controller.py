@@ -31,6 +31,7 @@ holding the lock; the UI marshals them onto its own thread.
 """
 from __future__ import annotations
 
+import math
 import threading
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
@@ -42,6 +43,8 @@ from .monitors import Display, detect
 
 REFRESH = 1.5
 DEBOUNCE = 0.5  # seconds of quiet input before a target is written
+MAX_COLUMNS = 4
+MAX_MONITORS = MAX_COLUMNS * MAX_COLUMNS  # shown as at most a 4x4 grid
 
 Readings = dict[int, Optional[int]]  # bus -> brightness (None: unreadable)
 
@@ -59,6 +62,17 @@ def _read_all(buses: list[int]) -> Readings:
         return {}
     with ThreadPoolExecutor(max_workers=len(buses)) as pool:
         return dict(zip(buses, pool.map(_safe_get, buses)))
+
+
+def grid_shape(count: int) -> tuple[int, int]:
+    """(columns, rows) of the most square grid holding ``count`` monitors.
+
+    1 -> 1x1, 2 -> 2x1, 3-4 -> 2x2, 5-6 -> 3x2, 7-9 -> 3x3, 10-12 -> 4x3,
+    13-16 -> 4x4.
+    """
+    count = max(1, min(count, MAX_MONITORS))
+    columns = math.ceil(math.sqrt(count))
+    return columns, math.ceil(count / columns)
 
 
 def _bus(d: Display) -> int:
@@ -301,6 +315,9 @@ class Controller:
 
     def _load(self) -> None:
         displays = [d for d in detect() if d.addressable]
+        if len(displays) > MAX_MONITORS:
+            self._report(f"showing {MAX_MONITORS} of {len(displays)} monitors")
+            displays = displays[:MAX_MONITORS]
         values = _read_all([_bus(d) for d in displays])
 
         def key(ds: list[Display]) -> list[tuple[Optional[int], str]]:

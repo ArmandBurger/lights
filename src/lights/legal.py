@@ -37,6 +37,14 @@ def notice(show_w: str, show_c: str) -> str:
         f"under certain conditions; {show_c} for details."
     )
 
+def notice_short(show_w: str, show_c: str) -> str:
+    """One-line form of ``notice`` for when screen space is tight."""
+    return (
+        f"{COPYRIGHT} · NO WARRANTY ({show_w}) · "
+        f"free software, GPL v3+ ({show_c})"
+    )
+
+
 def notice_gui() -> str:
     """The licence notice for the GUI's About dialog."""
     return f"""\

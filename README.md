@@ -77,6 +77,14 @@ Both show each monitor as a screen, side by side, with its name and info
 underneath (model, brightness, display number, connector, I2C bus), and
 share the same behaviour and keys.
 
+**Layout:** monitors are arranged in the most square grid that fits them,
+up to 4×4 — 1 → 1×1, 2 → 2×1, 3–4 → 2×2, 5–6 → 3×2, 7–9 → 3×3,
+10–12 → 4×3, 13–16 → 4×4. Beyond 16, the first 16 are shown. The desktop
+window asks for a size that fits the grid (capped to 90% of the screen) and
+the screens scale with the window; in the TUI they scale with the terminal,
+switching to smaller − / + glyphs and a one-line licence notice when space
+is tight.
+
 **Mouse:** click the left half of a screen (**−**) or the right half (**+**)
 to step its brightness by **5**. Off-grid values settle on the next multiple
 of 5 first: 74 → 75 → 80 going up, 74 → 70 → 65 going down. Clicking a
