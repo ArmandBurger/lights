@@ -135,7 +135,8 @@ def cmd_down(target: str, step: int) -> int:
 
 
 def cmd_show(what: str) -> int:
-    print(legal.WARRANTY if what == "w" else legal.license_text(), end="")
+    texts = {"w": legal.WARRANTY, "c": legal.license_text(), "n": legal.notices_text()}
+    print(texts[what], end="")
     return 0
 
 
@@ -181,8 +182,11 @@ def main() -> int:
 
     sub.add_parser("app", help="launch the interactive TUI")
 
-    sh = sub.add_parser("show", help="show the warranty (w) or licence conditions (c)")
-    sh.add_argument("what", choices=["w", "c"])
+    sh = sub.add_parser(
+        "show",
+        help="show the warranty (w), licence conditions (c) or third-party notices (n)",
+    )
+    sh.add_argument("what", choices=["w", "c", "n"])
 
     args = p.parse_args()
     cmd: str = args.cmd

@@ -17,6 +17,7 @@
 from __future__ import annotations
 
 from importlib import metadata
+from typing import Optional
 
 COPYRIGHT = "lights  Copyright (C) 2026  Armand Burger"
 CONTACT = "GitHub @ArmandBurger, Twitter/X @ghastly_dev"
@@ -70,12 +71,28 @@ SUCH DAMAGES.
 """
 
 
-def license_text() -> str:
-    """The full GPL v3 text, as installed with the package's metadata."""
+NOTICES_URL = "https://github.com/ArmandBurger/lights/blob/main/THIRD_PARTY_NOTICES.md"
+
+
+def _license_file(name: str) -> Optional[str]:
+    """A file listed in ``license-files``, as installed with the metadata."""
     try:
-        text = metadata.distribution("lights").read_text("licenses/LICENSE")
+        return metadata.distribution("lights").read_text(f"licenses/{name}")
     except metadata.PackageNotFoundError:
-        text = None
+        return None
+
+
+def license_text() -> str:
+    """The full GPL v3 text."""
+    text = _license_file("LICENSE")
     if text:
         return text
     return f"The GNU General Public License v3 is available at <{LICENSE_URL}>.\n"
+
+
+def notices_text() -> str:
+    """Third-party notices (copyright and license of bundled material)."""
+    text = _license_file("THIRD_PARTY_NOTICES.md")
+    if text:
+        return text
+    return f"Third-party notices are available at <{NOTICES_URL}>.\n"

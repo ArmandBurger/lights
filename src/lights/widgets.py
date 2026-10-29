@@ -169,7 +169,7 @@ class LegalScreen(ModalScreen[None]):
     """
 
     BINDINGS: ClassVar[list[BindingType]] = [
-        Binding("escape,q,w,c", "dismiss", "Close"),
+        Binding("escape,q,w,c,n", "dismiss", "Close"),
     ]
 
     def __init__(self, title: str, text: str) -> None:

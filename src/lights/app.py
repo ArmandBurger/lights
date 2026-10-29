@@ -30,6 +30,7 @@ Keys:
   shift+k        : lower by 15
   l              : toggle the lock
   w / c          : show the warranty / the licence conditions (GPL v3)
+  n              : show third-party notices
   r              : re-detect monitors and refresh now
   q              : quit
 
@@ -116,6 +117,7 @@ class LightsApp(App[None]):
         Binding("r", "reload", "Refresh"),
         Binding("w", "show_warranty", "Warranty", show=False),
         Binding("c", "show_conditions", "License", show=False),
+        Binding("n", "show_notices", "Notices", show=False),
         Binding("q,enter", "quit", "Quit"),
     ]
 
@@ -155,6 +157,9 @@ class LightsApp(App[None]):
 
     def action_show_conditions(self) -> None:
         self.push_screen(LegalScreen("GNU General Public License v3", legal.license_text()))
+
+    def action_show_notices(self) -> None:
+        self.push_screen(LegalScreen("Third-party notices", legal.notices_text()))
 
     # -- drawing ---------------------------------------------------------
 

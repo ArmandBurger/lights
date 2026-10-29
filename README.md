@@ -150,9 +150,18 @@ This program is distributed in the hope that it will be useful, but
 WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
 or FITNESS FOR A PARTICULAR PURPOSE.
 
-`lights show w` prints the warranty disclaimer and `lights show c` the
-license conditions; in the TUI, press `w` / `c`. `lights --version` shows
-the copyright notice.
+`lights show w` prints the warranty disclaimer, `lights show c` the license
+conditions and `lights show n` the third-party notices; in the TUI, press
+`w` / `c` / `n`. `lights --version` shows the copyright notice.
+
+### Third-party material
+
+The icons in `assets/` are from
+[Fluent UI System Icons](https://github.com/microsoft/fluentui-system-icons),
+Copyright (c) 2020 Microsoft Corporation, used under the MIT License
+(recoloured). See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) and
+[assets/LICENSE-fluentui-system-icons](assets/LICENSE-fluentui-system-icons).
+`lights` is not affiliated with or endorsed by Microsoft.
 
 Contact: [@ArmandBurger](https://github.com/ArmandBurger) on GitHub, [@ghastly_dev](https://x.com/ghastly_dev) on Twitter/X.
 
