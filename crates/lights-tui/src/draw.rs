@@ -59,9 +59,6 @@ const MINUS: [(u16, u16, &[&str]); 3] = [
     (0, 0, &["−"]),
 ];
 
-const SHOW_W: &str = "press w";
-const SHOW_C: &str = "press c";
-
 /// `area` without `x` columns on each side and `y` rows top and bottom.
 fn shrink(area: Rect, x: u16, y: u16) -> Rect {
     area.inner(Margin::new(x, y))
@@ -70,18 +67,11 @@ fn shrink(area: Rect, x: u16, y: u16) -> Rect {
 impl App {
     pub(crate) fn draw(&mut self, frame: &mut Frame) {
         self.hits.clear();
-        let (_, rows) = grid_shape(self.view.monitors.len());
-        let notice = if rows > 2 {
-            legal::notice_short(SHOW_W, SHOW_C)
-        } else {
-            legal::notice(SHOW_W, SHOW_C)
-        };
-        let notice_height = notice.lines().count() as u16;
-        let [header, toolbar, screens, notice_area, keys] = Layout::vertical([
+        let [header, toolbar, screens, notice, keys] = Layout::vertical([
             Constraint::Length(1),
             Constraint::Length(3),
             Constraint::Fill(1),
-            Constraint::Length(notice_height),
+            Constraint::Length(1),
             Constraint::Length(1),
         ])
         .areas(frame.area());
@@ -94,10 +84,7 @@ impl App {
         );
         self.draw_lock(frame, toolbar);
         self.draw_screens(frame, screens);
-        frame.render_widget(
-            Paragraph::new(notice).add_modifier(Modifier::DIM),
-            shrink(notice_area, 2, 0),
-        );
+        self.draw_copyright(frame, shrink(notice, 2, 0));
         frame.render_widget(Paragraph::new(format!("  {HELP_LINE}")).bg(PANEL), keys);
         // The pending count (vim's showcmd) sits on the right, over the help
         // text if the terminal is narrow.
@@ -121,6 +108,20 @@ impl App {
         if self.overlay.is_some() {
             self.draw_overlay(frame);
         }
+    }
+
+    fn draw_copyright(&mut self, frame: &mut Frame, area: Rect) {
+        let link = Rect {
+            width: (legal::COPYRIGHT.chars().count() as u16).min(area.width),
+            ..area
+        };
+        let style = if self.hover == Some(Hit::About) {
+            Style::new().underlined()
+        } else {
+            Style::new().dim()
+        };
+        frame.render_widget(Paragraph::new(legal::COPYRIGHT).style(style), link);
+        self.hits.push((link, Hit::About));
     }
 
     fn draw_lock(&mut self, frame: &mut Frame, area: Rect) {

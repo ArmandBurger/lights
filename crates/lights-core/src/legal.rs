@@ -17,7 +17,7 @@
 //! Copyright, licence and third-party notice texts. The full licence and the
 //! notices are compiled into the binary, so they are always available.
 
-pub const COPYRIGHT: &str = "lights  Copyright (C) 2026  Armand Burger";
+pub const COPYRIGHT: &str = "lights Copyright (C) 2026 Armand Burger";
 pub const CONTACT: &str = "GitHub @ArmandBurger, Twitter/X @ghastly_dev";
 
 /// The full GNU GPL v3 text.
@@ -38,13 +38,12 @@ pub fn notice(show_w: &str, show_c: &str) -> String {
     )
 }
 
-/// One-line form of `notice` for when screen space is tight.
-pub fn notice_short(show_w: &str, show_c: &str) -> String {
-    format!("{COPYRIGHT} · NO WARRANTY ({show_w}) · free software, GPL v3+ ({show_c})")
+/// The licence notice, third-party notices and full licence, as shown under About.
+pub fn about() -> String {
+    [notice_about().as_str(), NOTICES, LICENSE].join("\n\n")
 }
 
-/// The licence notice for the desktop UI's About dialog.
-pub fn notice_gui() -> String {
+fn notice_about() -> String {
     format!(
         "{COPYRIGHT}
 

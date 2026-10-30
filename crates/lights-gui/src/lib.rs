@@ -336,7 +336,7 @@ impl Window {
             .website_label("GitHub @ArmandBurger · Twitter/X @ghastly_dev")
             .logo_icon_name(ICON_HIGH)
             .license_type(gtk::License::Custom)
-            .license([legal::notice_gui().as_str(), legal::NOTICES, legal::LICENSE].join("\n\n"))
+            .license(legal::about())
             .wrap_license(false)
             .build();
         dialog.add_credit_section(

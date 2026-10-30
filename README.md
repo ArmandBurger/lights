@@ -44,7 +44,7 @@ lights --help
 | `lights set <target> <percent>` | Set brightness (0–100) on a display. |
 | `lights up <target> [step]`    | Raise brightness by `step` (default 10). |
 | `lights down <target> [step]`  | Lower brightness by `step` (default 10). |
-| `lights app`     | Launch the interactive TUI. |
+| `lights` or `lights tui` | Launch the interactive TUI. |
 | `lights gui`     | Launch the desktop UI (also `lights-gui`). |
 
 ### Targeting displays
@@ -72,7 +72,7 @@ lights down 1 5
 
 An unknown target prints a clean `error: unknown target '...'` (exit 1).
 
-## Desktop UI (`lights gui`) and TUI (`lights app`)
+## Desktop UI (`lights gui`) and TUI (`lights tui`)
 
 Both show each monitor as a screen, side by side, with its name and info
 underneath (model, brightness, display number, connector, I2C bus), and
@@ -83,8 +83,7 @@ up to 4×4 — 1 → 1×1, 2 → 2×1, 3–4 → 2×2, 5–6 → 3×2, 7–9 →
 10–12 → 4×3, 13–16 → 4×4. Beyond 16, the first 16 are shown. The desktop
 window asks for a size that fits the grid (capped to 90% of the screen) and
 the screens scale with the window; in the TUI they scale with the terminal,
-switching to smaller − / + glyphs and a one-line licence notice when space
-is tight.
+switching to smaller − / + glyphs when space is tight.
 
 **Mouse:** click the left half of a screen (**−**) or the right half (**+**)
 to step its brightness by **5**. Off-grid values settle on the next multiple
@@ -121,12 +120,12 @@ To try either UI without touching real monitors, set
 
 Both UIs show a pending count at the bottom right (like vim's showcmd).
 The desktop UI's About dialog (ⓘ) shows the copyright, licence and
-third-party notices. In the TUI, `w` / `c` / `n` show the warranty, licence
-and third-party notices.
+third-party notices. In the TUI, click the copyright line for the same, or
+press `w` / `c` / `n` for the warranty, licence and third-party notices.
 
 ```bash
 lights gui   # desktop UI (or lights-gui)
-lights app   # TUI, from a real terminal
+lights       # TUI, from a real terminal (or lights tui)
 ```
 
 ## Notes

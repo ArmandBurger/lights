@@ -15,7 +15,7 @@
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 //! The `lights` command: brightness from the command line, plus the TUI
-//! (`lights app`) and the desktop UI (`lights gui`).
+//! (`lights` or `lights tui`) and the desktop UI (`lights gui`).
 
 use std::process::ExitCode;
 use std::sync::LazyLock;
@@ -36,7 +36,7 @@ use lights_core::{VERSION, legal};
 )]
 struct Cli {
     #[command(subcommand)]
-    command: Command,
+    command: Option<Command>,
 }
 
 #[derive(Subcommand)]
@@ -72,8 +72,8 @@ enum Command {
         #[arg(default_value_t = DEFAULT_STEP)]
         step: i32,
     },
-    /// Launch the interactive TUI
-    App,
+    /// Launch the interactive TUI (the default)
+    Tui,
     /// Launch the desktop (GTK 4) UI
     Gui,
     /// Show the warranty (w), licence conditions (c) or third-party notices (n)
@@ -244,13 +244,13 @@ fn cmd_show(what: Shown) -> Result<bool, String> {
 }
 
 #[cfg(feature = "tui")]
-fn cmd_app() -> Result<bool, String> {
+fn cmd_tui() -> Result<bool, String> {
     lights_tui::run().map_err(|e| e.to_string())?;
     Ok(true)
 }
 
 #[cfg(not(feature = "tui"))]
-fn cmd_app() -> Result<bool, String> {
+fn cmd_tui() -> Result<bool, String> {
     Err("this build of lights has no TUI (built without the `tui` feature)".into())
 }
 
@@ -266,14 +266,14 @@ fn cmd_gui() -> Result<bool, String> {
 
 fn main() -> ExitCode {
     let cli = Cli::parse();
-    let result = match &cli.command {
+    let result = match cli.command.as_ref().unwrap_or(&Command::Tui) {
         Command::Detect => cmd_detect(),
         Command::Info => cmd_info(),
         Command::Get { target, json } => cmd_get(target, *json),
         Command::Set { args } => cmd_set(args),
         Command::Up { target, step } => apply(target, |bus| brightness::bump_value(bus, *step)),
         Command::Down { target, step } => apply(target, |bus| brightness::bump_value(bus, -step)),
-        Command::App => cmd_app(),
+        Command::Tui => cmd_tui(),
         Command::Gui => cmd_gui(),
         Command::Show { what } => cmd_show(*what),
     };

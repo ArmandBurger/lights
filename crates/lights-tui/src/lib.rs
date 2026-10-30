@@ -52,11 +52,12 @@ enum Event {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Hit {
     Lock,
+    About,
     Select(u32),
     Step { bus: u32, delta: i32 },
 }
 
-/// A scrollable text shown over everything (keys, warranty, licence).
+/// A scrollable text shown over everything (keys, about, warranty, licence).
 struct Overlay {
     title: &'static str,
     text: String,
@@ -283,6 +284,7 @@ impl App {
             MouseEventKind::Moved | MouseEventKind::Drag(_) => self.hover = hit,
             MouseEventKind::Down(MouseButton::Left) => match hit {
                 Some(Hit::Lock) => self.controller.toggle_lock(),
+                Some(Hit::About) => self.show("About", legal::about()),
                 Some(Hit::Select(bus)) => self.controller.select_bus(bus),
                 Some(Hit::Step { bus, delta }) => {
                     self.controller.select_bus(bus);
@@ -404,7 +406,10 @@ mod tests {
         let screen = render(&mut app, 120, 40);
         println!("{screen}");
         assert!(screen.contains("Fake Monitor 9"));
-        assert!(screen.contains("NO WARRANTY (press w)"));
+        assert!(screen.contains("lights Copyright (C) 2026 Armand Burger"));
+        click(&mut app, Hit::About);
+        let screen = render(&mut app, 120, 40);
+        assert!(screen.contains("About") && screen.contains("GNU General Public License"));
         // Tiny terminals must not panic.
         for (w, h) in [(20, 8), (5, 3), (1, 1)] {
             render(&mut app, w, h);
