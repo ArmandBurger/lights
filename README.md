@@ -1,33 +1,31 @@
 # lights
 
-A self-contained Python brightness controller for two monitors, driven over
-`ddcutil` (VCP code `0x10`, 0–100 scale). Provides a small CLI, an
-interactive Textual TUI and a GTK 4 desktop UI, both fully keyboard-driven
-with vim-style keys.
+A brightness controller for monitors, driven over `ddcutil` (VCP code
+`0x10`, 0–100 scale). One Rust binary provides a small CLI, an interactive
+terminal UI (ratatui) and a GTK 4 desktop UI, both fully keyboard-driven with
+vim-style keys.
 
 ## Installation
 
-Requires Python ≥ 3.10 with `textual` (installed by uv). The desktop UI
-also needs GTK 4 and PyGObject from the system, which uv does not build:
+Runtime requirements: `ddcutil` (≥ 1.4.1) with your monitors reachable on
+their I2C/EDID DDC bus (e.g. `/dev/i2c-8`, `/dev/i2c-10`), and GTK 4 for the
+desktop UI (preinstalled on GNOME, Cinnamon and most desktops).
+
+Building needs Rust (≥ 1.92, e.g. via [rustup](https://rustup.rs)) and the
+GTK 4 development files:
 
 ```bash
-sudo apt install python3-gi gir1.2-gtk-4.0   # Debian / Ubuntu / Mint
+sudo apt install ddcutil libgtk-4-dev build-essential   # Debian / Ubuntu / Mint
+cargo install --path crates/lights
 ```
 
-Create the venv on the system Python so it can see PyGObject, then sync:
+This installs `lights` and `lights-gui` into `~/.cargo/bin`. The icons and
+licence texts are compiled into the binary, so it can be copied anywhere.
+For a terminal-only build without GTK:
 
 ```bash
-cd lights
-uv venv --system-site-packages --python /usr/bin/python3
-uv sync
+cargo install --path crates/lights --no-default-features --features tui
 ```
-
-After `uv sync`, the commands `lights` and `lights-gui` are on the path inside
-the venv (`uv run lights ...` or `.venv/bin/lights`). The dev group installs
-GTK 4 type stubs (`pygobject-stubs`) for pyright.
-
-Requires `ddcutil` (≥ 1.4.1) installed and your monitors reachable on their
-I2C/EDID DDC bus (e.g. `/dev/i2c-8`, `/dev/i2c-10`).
 
 ## CLI
 
@@ -99,6 +97,9 @@ the screen immediately; the monitor is written once input on it has been
 quiet for 300 ms (debounce), so a burst of input costs a single ddcutil
 call. Pending changes are still written if you quit within that window.
 
+To try either UI without touching real monitors, set
+`LIGHTS_FAKE_MONITORS=N` to show N simulated monitors.
+
 **Keys** (vim-style; a count repeats a motion, as in vim):
 
 | Key | Action |
@@ -115,14 +116,14 @@ call. Pending changes are still written if you quit within that window.
 | `q` | Quit. |
 | `Esc` | Cancel a pending count. |
 
-The desktop UI shows a pending count in its status bar (like vim's
-showcmd); its About dialog (ⓘ) shows the copyright, licence and
+Both UIs show a pending count at the bottom right (like vim's showcmd).
+The desktop UI's About dialog (ⓘ) shows the copyright, licence and
 third-party notices. In the TUI, `w` / `c` / `n` show the warranty, licence
 and third-party notices.
 
 ```bash
-uv run lights gui   # desktop UI
-uv run lights app   # TUI, from a real terminal
+lights gui   # desktop UI (or lights-gui)
+lights app   # TUI, from a real terminal
 ```
 
 ## Notes
@@ -144,27 +145,31 @@ uv run lights app   # TUI, from a real terminal
 
 ## File layout
 
+A Cargo workspace:
+
 ```
 lights/
-├── pyproject.toml
-├── uv.lock
-└── src/lights/
-    ├── __init__.py      # package (version 0.1.0)
-    ├── brightness.py    # get/set/bump via ddcutil (VCP 0x10)
-    ├── monitors.py      # `ddcutil detect` parser
-    ├── cli.py           # argparse subcommands + target resolution
-    ├── controller.py    # shared state: debounce, lock, polling, writers
-    ├── keys.py          # vim-style key handling shared by both UIs
-    ├── app.py           # Textual TUI
-    ├── widgets.py       # clickable monitor screens for the TUI
-    ├── gui.py           # GTK 4 desktop UI
-    ├── legal.py         # copyright, licence and notice texts
-    └── icons/           # Fluent UI System Icons (MIT), hicolor layout
+├── Cargo.toml               # workspace
+└── crates/
+    ├── lights-core/         # shared library
+    │   └── src/
+    │       ├── brightness.rs  # get/set via ddcutil (VCP 0x10), retries, bus locks
+    │       ├── monitors.rs    # `ddcutil detect` parser
+    │       ├── backend.rs     # ddcutil or fake monitors
+    │       ├── controller.rs  # shared state: debounce, lock, polling, writers
+    │       ├── keys.rs        # vim-style key handling shared by both UIs
+    │       └── legal.rs       # copyright, licence and notice texts
+    ├── lights-tui/          # ratatui + crossterm terminal UI
+    ├── lights-gui/          # GTK 4 desktop UI
+    │   └── assets/          # style.css and Fluent UI System Icons (MIT), compiled in
+    └── lights/              # the `lights` and `lights-gui` binaries (clap CLI)
 ```
+
+Run the tests with `cargo test --workspace`.
 
 ## Roadmap
 
-Done: brightness CLI, interactive TUI and GTK 4 desktop UI.
+Done: brightness CLI, interactive TUI and GTK 4 desktop UI, in Rust.
 
 Planned: a Cinnamon panel applet with desktop shortcuts.
 
@@ -187,11 +192,11 @@ conditions and `lights show n` the third-party notices; in the TUI, press
 
 ### Third-party material
 
-The icons in `src/lights/icons/` are from
+The icons in `crates/lights-gui/assets/icons/` are from
 [Fluent UI System Icons](https://github.com/microsoft/fluentui-system-icons),
 Copyright (c) 2020 Microsoft Corporation, used under the MIT License
 (recoloured). See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) and
-[src/lights/icons/LICENSE-fluentui-system-icons](src/lights/icons/LICENSE-fluentui-system-icons).
+[crates/lights-gui/assets/icons/LICENSE-fluentui-system-icons](crates/lights-gui/assets/icons/LICENSE-fluentui-system-icons).
 `lights` is not affiliated with or endorsed by Microsoft.
 
 Contact: [@ArmandBurger](https://github.com/ArmandBurger) on GitHub, [@ghastly_dev](https://x.com/ghastly_dev) on Twitter/X.

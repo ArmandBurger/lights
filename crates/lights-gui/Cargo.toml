@@ -1,0 +1,18 @@
+[package]
+name = "lights-gui"
+description = "GTK 4 desktop UI for lights"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+# The bundled icons are MIT (Fluent UI System Icons).
+license = "GPL-3.0-or-later AND MIT"
+authors.workspace = true
+repository.workspace = true
+
+[dependencies]
+lights-core.workspace = true
+async-channel.workspace = true
+gtk.workspace = true
+
+[build-dependencies]
+glib-build-tools.workspace = true

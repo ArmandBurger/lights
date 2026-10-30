@@ -1,0 +1,27 @@
+[workspace]
+resolver = "3"
+members = ["crates/*"]
+default-members = ["crates/lights"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.92"
+license = "GPL-3.0-or-later"
+authors = ["Armand Burger"]
+repository = "https://github.com/ArmandBurger/lights"
+
+[workspace.dependencies]
+lights-core = { path = "crates/lights-core" }
+lights-tui = { path = "crates/lights-tui" }
+lights-gui = { path = "crates/lights-gui" }
+async-channel = "2.5"
+clap = { version = "4.6", features = ["derive"] }
+glib-build-tools = "0.22"
+gtk = { package = "gtk4", version = "0.11", features = ["v4_12"] }
+ratatui = "0.30"
+serde_json = { version = "1.0", features = ["preserve_order"] }
+
+[profile.release]
+lto = true
+strip = true

@@ -1,0 +1,27 @@
+[package]
+name = "lights"
+description = "Brightness controller for monitors via ddcutil: CLI, TUI and desktop UI"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+# The desktop UI bundles MIT-licensed icons (Fluent UI System Icons).
+license = "GPL-3.0-or-later AND MIT"
+authors.workspace = true
+repository.workspace = true
+
+[features]
+default = ["tui", "gui"]
+tui = ["dep:lights-tui"]
+gui = ["dep:lights-gui"]
+
+[dependencies]
+lights-core.workspace = true
+lights-tui = { workspace = true, optional = true }
+lights-gui = { workspace = true, optional = true }
+clap.workspace = true
+serde_json.workspace = true
+
+[[bin]]
+name = "lights-gui"
+path = "src/bin/lights-gui.rs"
+required-features = ["gui"]

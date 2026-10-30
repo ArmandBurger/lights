@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- GTK treats <prefix>/scalable/actions/*.svg as hicolor icons, so the
+     symbolic icons are recoloured to match the theme. -->
+<gresources>
+  <gresource prefix="/io/github/armandburger/lights/icons/scalable/actions">
+    <file alias="ic_fluent_add_24_filled-symbolic.svg">hicolor/scalable/actions/ic_fluent_add_24_filled-symbolic.svg</file>
+    <file alias="ic_fluent_subtract_24_filled-symbolic.svg">hicolor/scalable/actions/ic_fluent_subtract_24_filled-symbolic.svg</file>
+    <file alias="ic_fluent_brightness_high_24_filled-symbolic.svg">hicolor/scalable/actions/ic_fluent_brightness_high_24_filled-symbolic.svg</file>
+    <file alias="ic_fluent_brightness_low_24_filled-symbolic.svg">hicolor/scalable/actions/ic_fluent_brightness_low_24_filled-symbolic.svg</file>
+  </gresource>
+</gresources>

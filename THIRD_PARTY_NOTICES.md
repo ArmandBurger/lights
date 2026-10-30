@@ -9,8 +9,9 @@ which remains under its own license.
 - Source: <https://github.com/microsoft/fluentui-system-icons>
 - License: MIT
 - Copyright (c) 2020 Microsoft Corporation
-- Files (in `src/lights/icons/hicolor/scalable/actions/`, renamed with a
-  `-symbolic` suffix):
+- Files (in `crates/lights-gui/assets/icons/hicolor/scalable/actions/`,
+  renamed with a `-symbolic` suffix, and compiled into the `lights`
+  binary):
   - `ic_fluent_add_24_filled-symbolic.svg`
   - `ic_fluent_subtract_24_filled-symbolic.svg`
   - `ic_fluent_brightness_high_24_filled-symbolic.svg`
