@@ -295,7 +295,7 @@ impl Controller {
             } else {
                 let selected = bus_of(&st.displays[st.selected]);
                 match st.shown(selected) {
-                    None => Some("cannot lock: brightness unknown".to_owned()),
+                    None => Some("cannot link: brightness unknown".to_owned()),
                     Some(base) => {
                         st.locked = true;
                         for bus in st.buses() {
@@ -303,7 +303,7 @@ impl Controller {
                                 self.inner.queue(&mut st, bus, base);
                             }
                         }
-                        Some(format!("locked: all monitors at {base}%"))
+                        Some(format!("linked: all monitors at {base}%"))
                     }
                 }
             }

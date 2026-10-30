@@ -16,6 +16,8 @@ which remains under its own license.
   - `ic_fluent_subtract_24_filled-symbolic.svg`
   - `ic_fluent_brightness_high_24_filled-symbolic.svg`
   - `ic_fluent_brightness_low_24_filled-symbolic.svg`
+  - `ic_fluent_link_24_filled-symbolic.svg`
+  - `ic_fluent_link_dismiss_24_filled-symbolic.svg`
 - Modifications: fill colour changed from `#212121` to `#ffffff`; files
   renamed. The UI recolours them to match the desktop theme.
 

@@ -7,5 +7,7 @@
     <file alias="ic_fluent_subtract_24_filled-symbolic.svg">hicolor/scalable/actions/ic_fluent_subtract_24_filled-symbolic.svg</file>
     <file alias="ic_fluent_brightness_high_24_filled-symbolic.svg">hicolor/scalable/actions/ic_fluent_brightness_high_24_filled-symbolic.svg</file>
     <file alias="ic_fluent_brightness_low_24_filled-symbolic.svg">hicolor/scalable/actions/ic_fluent_brightness_low_24_filled-symbolic.svg</file>
+    <file alias="ic_fluent_link_24_filled-symbolic.svg">hicolor/scalable/actions/ic_fluent_link_24_filled-symbolic.svg</file>
+    <file alias="ic_fluent_link_dismiss_24_filled-symbolic.svg">hicolor/scalable/actions/ic_fluent_link_dismiss_24_filled-symbolic.svg</file>
   </gresource>
 </gresources>

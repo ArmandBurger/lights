@@ -90,8 +90,8 @@ to step its brightness by **5**. Off-grid values settle on the next multiple
 of 5 first: 74 → 75 → 80 going up, 74 → 70 → 65 going down. Clicking a
 screen also selects it.
 
-**Lock:** the *Unlocked / Locked* button (or `s`) syncs every monitor to the
-selected monitor's brightness. While locked, every change — mouse or
+**Link:** the *Separate / Linked* button (or `s`) syncs every monitor to the
+selected monitor's brightness. While linked, every change — mouse or
 keyboard — applies the same value to all monitors.
 
 Values refresh automatically every 1.5 s in the background. Input updates
@@ -112,7 +112,7 @@ To try either UI without touching real monitors, set
 | `3k`, `2J`, … | Repeat a step. |
 | `70%` | Set brightness to 70%. |
 | `gg` / `G` | 100% / 0% (`40gg` also sets 40%). |
-| `s` | Toggle the lock. |
+| `s` | Link or separate the monitors. |
 | `r` | Re-detect monitors and refresh now. |
 | `?` | Show the keys. |
 | `q` | Quit. |

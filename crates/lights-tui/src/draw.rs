@@ -133,9 +133,9 @@ impl App {
         };
         let locked = self.view.locked;
         let label = if locked {
-            "Locked · synced"
+            "⇄ Linked"
         } else {
-            "Unlocked"
+            "Separate"
         };
         let hovered = self.hover == Some(Hit::Lock);
         let style = match (locked, hovered) {

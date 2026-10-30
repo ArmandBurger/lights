@@ -62,7 +62,7 @@ pub const HELP: [(&str, &str); 11] = [
     ("<count>", "repeat, e.g. 3k"),
     ("<n>%", "set brightness to n%, e.g. 70%"),
     ("gg / G", "100% / 0%"),
-    ("s", "lock: sync and adjust all monitors together"),
+    ("s", "link: adjust all monitors together"),
     ("r", "re-detect monitors"),
     ("?", "show keys"),
     ("q", "quit"),
@@ -70,7 +70,7 @@ pub const HELP: [(&str, &str); 11] = [
 ];
 
 pub const HELP_LINE: &str = "h/l select · k/j ±5 · K/J ±10 · 3k repeat · 70% set · \
-                             gg/G max/min · s lock · r refresh · ? keys · q quit";
+                             gg/G max/min · s link · r refresh · ? keys · q quit";
 
 fn motion(key: Key) -> Option<Action> {
     let step = |steps, size| Some(Action::Step { steps, size });

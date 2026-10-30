@@ -45,6 +45,10 @@ const ICON_ADD: &str = "ic_fluent_add_24_filled-symbolic";
 const ICON_SUBTRACT: &str = "ic_fluent_subtract_24_filled-symbolic";
 const ICON_HIGH: &str = "ic_fluent_brightness_high_24_filled-symbolic";
 const ICON_LOW: &str = "ic_fluent_brightness_low_24_filled-symbolic";
+const ICON_LINKED: &str = "ic_fluent_link_24_filled-symbolic";
+const ICON_SEPARATE: &str = "ic_fluent_link_dismiss_24_filled-symbolic";
+const LINK_TOOLTIP: &str = "Link: adjust all monitors together  (s)";
+const UNLINK_TOOLTIP: &str = "Linked: all monitors change together. Click to adjust each on its own  (s)";
 const MESSAGE_SECONDS: u32 = 4;
 
 // Window sizing: each monitor card is about CARD_WIDTH x CARD_HEIGHT at the
@@ -94,6 +98,8 @@ struct Window {
     shape: Cell<(usize, usize)>,
     cards: RefCell<Vec<MonitorCard>>,
     lock_button: gtk::ToggleButton,
+    lock_icon: gtk::Image,
+    lock_label: gtk::Label,
     keys_button: gtk::MenuButton,
     stack: gtk::Stack,
     status: gtk::Label,
@@ -128,9 +134,14 @@ impl Window {
         );
 
         let header = gtk::HeaderBar::new();
+        let lock_icon = gtk::Image::from_icon_name(ICON_SEPARATE);
+        let lock_label = gtk::Label::new(Some("Separate"));
+        let lock_content = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+        lock_content.append(&lock_icon);
+        lock_content.append(&lock_label);
         let lock_button = gtk::ToggleButton::builder()
-            .label("Unlocked")
-            .tooltip_text("Lock: sync and adjust all monitors together  (s)")
+            .child(&lock_content)
+            .tooltip_text(LINK_TOOLTIP)
             .build();
         header.pack_start(&lock_button);
         let about = gtk::Button::builder()
@@ -193,6 +204,8 @@ impl Window {
             shape: Cell::new((0, 0)),
             cards: RefCell::new(Vec::new()),
             lock_button,
+            lock_icon,
+            lock_label,
             keys_button,
             stack,
             status,
@@ -256,11 +269,14 @@ impl Window {
     fn sync(self: &Rc<Self>) {
         let view = self.controller.view();
         self.lock_button.set_active(view.locked);
-        self.lock_button.set_label(if view.locked {
-            "Locked · synced"
+        let (icon, label, tooltip) = if view.locked {
+            (ICON_LINKED, "Linked", UNLINK_TOOLTIP)
         } else {
-            "Unlocked"
-        });
+            (ICON_SEPARATE, "Separate", LINK_TOOLTIP)
+        };
+        self.lock_icon.set_icon_name(Some(icon));
+        self.lock_label.set_label(label);
+        self.lock_button.set_tooltip_text(Some(tooltip));
 
         if view.monitors.is_empty() {
             self.status.set_label(if view.detected {

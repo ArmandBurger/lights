@@ -40,7 +40,7 @@ use ratatui::crossterm::event::{
 use ratatui::crossterm::execute;
 use ratatui::layout::{Position, Rect};
 
-const MESSAGE_TIME: Duration = Duration::from_secs(4);
+const MESSAGE_TIME: Duration = Duration::from_secs(1);
 
 enum Event {
     Changed,
