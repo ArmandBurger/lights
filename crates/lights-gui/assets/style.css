@@ -45,3 +45,9 @@
     border-top: 1px solid alpha(currentColor, 0.15);
 }
 .pending { font-family: monospace; }
+.presets list { background: none; }
+.presets row {
+    min-height: 32px;
+    padding: 0 8px;
+    border-radius: 6px;
+}
