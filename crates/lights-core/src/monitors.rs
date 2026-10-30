@@ -25,7 +25,7 @@
 //! address each monitor by its I2C bus (`ddcutil --bus N`), which skips that
 //! probe and is roughly twice as fast per call.
 
-use crate::brightness::{DdcError, ddcutil};
+use crate::ddcutil::{self, DdcError};
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Display {
@@ -56,10 +56,28 @@ impl Display {
     pub fn bus_name(&self) -> &str {
         self.i2c_bus.strip_prefix("/dev/").unwrap_or(&self.i2c_bus)
     }
+
+    pub fn model_name(&self) -> &str {
+        if self.model.is_empty() {
+            "unknown"
+        } else {
+            &self.model
+        }
+    }
+
+    /// e.g. `display 1 · card1-HDMI-A-2 · i2c-8`.
+    pub fn summary(&self) -> String {
+        format!(
+            "display {} · {} · {}",
+            self.label(),
+            self.connector,
+            self.bus_name()
+        )
+    }
 }
 
 pub fn detect_raw() -> Result<String, DdcError> {
-    ddcutil(&["detect"])
+    ddcutil::run(&["detect"])
 }
 
 pub fn detect() -> Result<Vec<Display>, DdcError> {
@@ -75,28 +93,36 @@ fn field<'a>(line: &'a str, key: &str) -> Option<&'a str> {
 /// Parse the output of `ddcutil detect`.
 pub fn parse(text: &str) -> Vec<Display> {
     let mut displays: Vec<Display> = Vec::new();
+
     for line in text.lines() {
         let s = line.trim();
+
         if let Some(rest) = s.strip_prefix("Display ") {
             let digits: String = rest.chars().take_while(char::is_ascii_digit).collect();
+
             if let Ok(index) = digits.parse() {
                 displays.push(Display {
                     index: Some(index),
                     ..Display::default()
                 });
+
                 continue;
             }
         }
+
         if s.starts_with("Invalid display") {
             displays.push(Display {
                 ddc_failed: true,
                 ..Display::default()
             });
+
             continue;
         }
+
         let Some(current) = displays.last_mut() else {
             continue;
         };
+
         if let Some(v) = field(s, "I2C bus:") {
             current.i2c_bus = v.split_whitespace().next().unwrap_or_default().to_owned();
         } else if let Some(v) = field(s, "DRM connector:") {
@@ -109,6 +135,7 @@ pub fn parse(text: &str) -> Vec<Display> {
             current.ddc_failed = true;
         }
     }
+
     displays
 }
 
@@ -148,7 +175,7 @@ Display 2
         let dell = &displays[0];
         assert_eq!(dell.index, Some(1));
         assert_eq!(dell.bus(), Some(8));
-        assert_eq!(dell.bus_name(), "i2c-8");
+        assert_eq!(dell.summary(), "display 1 · card1-HDMI-A-2 · i2c-8");
         assert_eq!(dell.connector, "card1-HDMI-A-2");
         assert_eq!(dell.mfg, "DEL - Dell Inc.");
         assert_eq!(dell.model, "DELL SE2219H");

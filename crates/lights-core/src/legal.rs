@@ -19,6 +19,7 @@
 
 pub const COPYRIGHT: &str = "lights Copyright (C) 2026 Armand Burger";
 pub const CONTACT: &str = "GitHub @ArmandBurger, Twitter/X @ghastly_dev";
+pub const WEBSITE: &str = "https://github.com/ArmandBurger";
 
 /// The full GNU GPL v3 text.
 pub const LICENSE: &str = include_str!("../../../LICENSE");

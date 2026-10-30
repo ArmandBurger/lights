@@ -19,58 +19,15 @@
 //! Displays are addressed by I2C bus number (see `Display::bus`) rather than
 //! by `--display N`, which would make ddcutil re-probe every bus per call.
 
-use std::collections::HashMap;
-use std::fmt;
-use std::process::Command;
-use std::sync::{Arc, LazyLock, Mutex, PoisonError};
 use std::thread;
 use std::time::Duration;
 
-pub const VCP_CODE: &str = "0x10"; // Brightness
-pub const DEFAULT_STEP: i32 = 10;
+use crate::ddcutil::{self, DdcError};
+
+const VCP_CODE: &str = "0x10"; // Brightness
 const RETRY_DELAY: Duration = Duration::from_millis(250);
 const READ_RETRIES: u32 = 3;
 const WRITE_RETRIES: u32 = 2;
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct DdcError(pub String);
-
-impl fmt::Display for DdcError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&self.0)
-    }
-}
-
-impl std::error::Error for DdcError {}
-
-/// Run ddcutil and return its stdout and stderr, trimmed.
-pub(crate) fn ddcutil(args: &[&str]) -> Result<String, DdcError> {
-    let output = Command::new("ddcutil")
-        .args(args)
-        .output()
-        .map_err(|e| DdcError(format!("cannot run ddcutil ({e}); is ddcutil installed?")))?;
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    Ok(format!("{stdout}\n{stderr}").trim().to_owned())
-}
-
-// One ddcutil call per bus at a time: overlapping calls on the same bus
-// (e.g. a background read during a write) make the monitor drop commands.
-static BUS_LOCKS: LazyLock<Mutex<HashMap<u32, Arc<Mutex<()>>>>> = LazyLock::new(Mutex::default);
-
-fn bus_lock(bus: u32) -> Arc<Mutex<()>> {
-    let mut locks = BUS_LOCKS.lock().unwrap_or_else(PoisonError::into_inner);
-    locks.entry(bus).or_default().clone()
-}
-
-fn run(args: &[&str], bus: u32) -> Result<String, DdcError> {
-    let bus_arg = bus.to_string();
-    let mut full = vec!["--bus", bus_arg.as_str()];
-    full.extend_from_slice(args);
-    let lock = bus_lock(bus);
-    let _guard = lock.lock().unwrap_or_else(PoisonError::into_inner);
-    ddcutil(&full)
-}
 
 const ERROR_MARKERS: [&str; 5] = [
     "failed",
@@ -105,6 +62,7 @@ pub fn clamp(value: i32) -> i32 {
 /// of 5: 74 +5 -> 75, 75 +5 -> 80, 74 -5 -> 70, 70 -5 -> 65.
 pub fn snap_step(value: i32, delta: i32) -> i32 {
     let step = delta.abs();
+
     if delta > 0 {
         clamp((value.div_euclid(step) + 1) * step)
     } else {
@@ -113,14 +71,17 @@ pub fn snap_step(value: i32, delta: i32) -> i32 {
 }
 
 pub fn get_value(bus: u32) -> Result<i32, DdcError> {
-    let mut text = run(&["getvcp", VCP_CODE], bus)?;
+    let mut text = ddcutil::run_on_bus(bus, &["getvcp", VCP_CODE])?;
+
     for _ in 0..READ_RETRIES {
         if parse_current(&text).is_some() {
             break;
         }
+
         thread::sleep(RETRY_DELAY);
-        text = run(&["getvcp", VCP_CODE], bus)?;
+        text = ddcutil::run_on_bus(bus, &["getvcp", VCP_CODE])?;
     }
+
     parse_current(&text)
         .ok_or_else(|| DdcError(format!("cannot read brightness on bus {bus}: {text:?}")))
 }
@@ -134,15 +95,19 @@ pub fn set_value(bus: u32, value: i32) -> Result<i32, DdcError> {
     let value = clamp(value);
     let value_arg = value.to_string();
     let mut text = String::new();
+
     for attempt in 0..=WRITE_RETRIES {
         if attempt > 0 {
             thread::sleep(RETRY_DELAY);
         }
-        text = run(&["--verify", "setvcp", VCP_CODE, &value_arg], bus)?;
+
+        text = ddcutil::run_on_bus(bus, &["--verify", "setvcp", VCP_CODE, &value_arg])?;
+
         if set_ok(&text) {
             return Ok(value);
         }
     }
+
     Err(DdcError(format!(
         "cannot set brightness on bus {bus}: {text:?}"
     )))

@@ -20,11 +20,10 @@ use std::rc::Rc;
 
 use gtk::pango;
 use gtk::prelude::*;
-use lights_core::controller::MonitorView;
-use lights_core::keys::STEP;
+use lights_core::controller::{Controller, MonitorView};
 
-use crate::icon::ScalableIcon;
-use crate::{ICON_ADD, ICON_HIGH, ICON_LOW, ICON_SUBTRACT};
+use crate::icon::Icon;
+use crate::scalable_icon::ScalableIcon;
 
 pub struct MonitorCard {
     pub root: gtk::Box,
@@ -34,7 +33,7 @@ pub struct MonitorCard {
 }
 
 impl MonitorCard {
-    /// `on_step(bus, direction)` runs when a half is clicked, `on_select(bus)`
+    /// `on_step(bus, steps)` runs when a half is clicked, `on_select(bus)`
     /// when anywhere on the card is.
     pub fn new(
         view: &MonitorView,
@@ -53,8 +52,9 @@ impl MonitorCard {
             .css_classes(["screen"])
             .vexpand(true)
             .build();
-        let minus = half(ICON_SUBTRACT, "minus", &format!("Dimmer by {STEP}%  (j)"));
-        let plus = half(ICON_ADD, "plus", &format!("Brighter by {STEP}%  (k)"));
+        let step = Controller::STEP;
+        let minus = Self::half(Icon::Subtract, "minus", &format!("Dimmer by {step}%  (j)"));
+        let plus = Self::half(Icon::Add, "plus", &format!("Brighter by {step}%  (k)"));
         let step = on_step.clone();
         minus.connect_clicked(move |_| step(bus, -1));
         plus.connect_clicked(move |_| on_step(bus, 1));
@@ -78,11 +78,7 @@ impl MonitorCard {
         let level = gtk::Label::builder().css_classes(["level"]).build();
         caption.append(
             &gtk::Label::builder()
-                .label(if d.model.is_empty() {
-                    "unknown"
-                } else {
-                    &d.model
-                })
+                .label(d.model_name())
                 .css_classes(["model"])
                 .ellipsize(pango::EllipsizeMode::End)
                 .build(),
@@ -92,12 +88,7 @@ impl MonitorCard {
         root.append(&caption);
         root.append(
             &gtk::Label::builder()
-                .label(format!(
-                    "display {} · {} · {}",
-                    d.label(),
-                    d.connector,
-                    d.bus_name()
-                ))
+                .label(d.summary())
                 .css_classes(["info"])
                 .ellipsize(pango::EllipsizeMode::End)
                 .build(),
@@ -113,35 +104,36 @@ impl MonitorCard {
             level_icon,
             level,
         };
+
         card.update(view);
         card
     }
 
     pub fn update(&self, view: &MonitorView) {
-        let value = view.value;
-        let busy = if view.busy { " …" } else { "" };
-        let shown = value.map_or_else(|| "n/a".to_owned(), |v| format!("{v}%"));
-        self.level.set_label(&format!("{shown}{busy}"));
-        self.level_icon
-            .set_icon_name(Some(if value.is_some_and(|v| v < 50) {
-                ICON_LOW
-            } else {
-                ICON_HIGH
-            }));
+        self.level.set_label(&view.level_text());
+
+        let icon = if view.value.is_some_and(|v| v < 50) {
+            Icon::BrightnessLow
+        } else {
+            Icon::BrightnessHigh
+        };
+
+        self.level_icon.set_icon_name(Some(icon.name()));
+
         if view.selected {
             self.screen.add_css_class("selected");
         } else {
             self.screen.remove_css_class("selected");
         }
     }
-}
 
-fn half(icon: &str, side: &str, tooltip: &str) -> gtk::Button {
-    gtk::Button::builder()
-        .child(&ScalableIcon::new(icon, 0.5, 96.0))
-        .css_classes(["step", side])
-        .hexpand(true)
-        .focus_on_click(false)
-        .tooltip_text(tooltip)
-        .build()
+    fn half(icon: Icon, side: &str, tooltip: &str) -> gtk::Button {
+        gtk::Button::builder()
+            .child(&ScalableIcon::new(icon.name(), 0.5, 96.0))
+            .css_classes(["step", side])
+            .hexpand(true)
+            .focus_on_click(false)
+            .tooltip_text(tooltip)
+            .build()
+    }
 }

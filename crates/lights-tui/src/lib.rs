@@ -23,24 +23,31 @@
 //! notices. Brightness state, debouncing and the lock live in `Controller`.
 
 mod draw;
+mod glyph;
+mod hit;
+mod overlay;
+mod theme;
+mod toast;
 
 use std::io::{self, stdout};
 use std::sync::mpsc::{self, RecvTimeoutError};
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use lights_core::backend;
 use lights_core::controller::{Controller, View};
-use lights_core::keys::{Action, HELP, Key, STEP, VimKeys};
+use lights_core::keys::{Action, Key, VimKeys};
 use lights_core::legal;
 use ratatui::crossterm::event::{
     self, DisableMouseCapture, EnableMouseCapture, Event as Input, KeyCode, KeyEvent, KeyEventKind,
     KeyModifiers, MouseButton, MouseEvent, MouseEventKind,
 };
-use ratatui::crossterm::execute;
-use ratatui::layout::{Position, Rect};
 
-const MESSAGE_TIME: Duration = Duration::from_secs(1);
+use ratatui::crossterm::execute;
+
+use crate::hit::{Hit, Hits};
+use crate::overlay::Overlay;
+use crate::toast::Toast;
 
 enum Event {
     Changed,
@@ -48,30 +55,13 @@ enum Event {
     Input(Input),
 }
 
-/// Something on screen that reacts to the mouse.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Hit {
-    Lock,
-    About,
-    Select(u32),
-    Step { bus: u32, delta: i32 },
-}
-
-/// A scrollable text shown over everything (keys, about, warranty, licence).
-struct Overlay {
-    title: &'static str,
-    text: String,
-    scroll: u16,
-}
-
 struct App {
     controller: Controller,
     vim: VimKeys,
     view: View,
-    message: Option<(String, Instant)>,
+    toast: Option<Toast>,
     overlay: Option<Overlay>,
-    /// Clickable areas from the last draw; later entries are on top.
-    hits: Vec<(Rect, Hit)>,
+    hits: Hits,
     hover: Option<Hit>,
     quit: bool,
 }
@@ -90,6 +80,7 @@ pub fn run() -> io::Result<()> {
             let _ = reported.send(Event::Report(message));
         },
     );
+
     thread::spawn(move || {
         while let Ok(input) = event::read() {
             if tx.send(Event::Input(input)).is_err() {
@@ -101,6 +92,7 @@ pub fn run() -> io::Result<()> {
     let mut terminal = ratatui::init();
     execute!(stdout(), EnableMouseCapture)?;
     let restore_hook = std::panic::take_hook();
+
     std::panic::set_hook(Box::new(move |info| {
         let _ = execute!(stdout(), DisableMouseCapture);
         restore_hook(info);
@@ -123,9 +115,9 @@ impl App {
             view: controller.view(),
             controller,
             vim: VimKeys::new(),
-            message: None,
+            toast: None,
             overlay: None,
-            hits: Vec::new(),
+            hits: Hits::default(),
             hover: None,
             quit: false,
         }
@@ -139,26 +131,25 @@ impl App {
         loop {
             self.view = self.controller.view();
             terminal.draw(|frame| self.draw(frame))?;
-            let timeout = match &self.message {
-                Some((_, shown)) => MESSAGE_TIME.saturating_sub(shown.elapsed()),
-                None => Duration::from_secs(60),
-            };
+            let timeout = self
+                .toast
+                .as_ref()
+                .map_or(Duration::from_secs(60), Toast::remaining);
             match rx.recv_timeout(timeout) {
                 Ok(event) => self.handle(event),
                 Err(RecvTimeoutError::Timeout) => {}
                 Err(RecvTimeoutError::Disconnected) => return Ok(()),
             }
+
             // Coalesce bursts (e.g. mouse movement) into one redraw.
             while let Ok(event) = rx.try_recv() {
                 self.handle(event);
             }
-            if self
-                .message
-                .as_ref()
-                .is_some_and(|(_, shown)| shown.elapsed() >= MESSAGE_TIME)
-            {
-                self.message = None;
+
+            if self.toast.as_ref().is_some_and(Toast::expired) {
+                self.toast = None;
             }
+
             if self.quit {
                 return Ok(());
             }
@@ -168,38 +159,38 @@ impl App {
     fn handle(&mut self, event: Event) {
         match event {
             Event::Changed => {}
-            Event::Report(message) => self.message = Some((message, Instant::now())),
+            Event::Report(message) => self.toast = Some(Toast::new(message)),
             Event::Input(Input::Key(key)) if key.kind != KeyEventKind::Release => self.on_key(key),
             Event::Input(Input::Mouse(mouse)) => self.on_mouse(mouse),
             Event::Input(_) => {}
         }
     }
 
-    // -- keys ------------------------------------------------------------
-
     fn on_key(&mut self, event: KeyEvent) {
         if event.modifiers.contains(KeyModifiers::CONTROL) {
             if matches!(event.code, KeyCode::Char('c' | 'q')) {
                 self.quit = true;
             }
+
             return;
         }
+
         if event.modifiers.contains(KeyModifiers::ALT) {
             return;
         }
-        if self.overlay.is_some() {
-            self.on_overlay_key(event.code);
+
+        if let Some(overlay) = &mut self.overlay {
+            if !overlay.on_key(event.code) {
+                self.overlay = None;
+            }
+
             return;
         }
-        let key = match event.code {
-            KeyCode::Char(c) => Key::Char(c),
-            KeyCode::Left => Key::Left,
-            KeyCode::Right => Key::Right,
-            KeyCode::Up => Key::Up,
-            KeyCode::Down => Key::Down,
-            KeyCode::Esc => Key::Escape,
-            _ => return,
+
+        let Some(key) = to_key(event.code) else {
+            return;
         };
+
         match self.vim.feed(key) {
             Some(action) => self.run(action),
             None => match key {
@@ -215,15 +206,16 @@ impl App {
 
     fn run(&mut self, action: Action) {
         let c = &self.controller;
+
         match action {
             Action::Pending => {}
             Action::Select(delta) => c.select(delta),
-            Action::Step { steps, size } => c.step(steps, size, None),
+            Action::Step(steps) => c.step(steps, None),
             Action::Set(value) => c.set_level(value, None),
             Action::Lock => c.toggle_lock(),
             Action::Reload => c.reload(),
             Action::Help => {
-                let text: Vec<String> = HELP
+                let text: Vec<String> = VimKeys::HELP
                     .iter()
                     .map(|(keys, what)| format!("{keys:<18}{what}"))
                     .collect();
@@ -234,66 +226,45 @@ impl App {
     }
 
     fn show(&mut self, title: &'static str, text: String) {
-        self.overlay = Some(Overlay {
-            title,
-            text,
-            scroll: 0,
-        });
-    }
-
-    fn on_overlay_key(&mut self, code: KeyCode) {
-        let Some(overlay) = &mut self.overlay else {
-            return;
-        };
-        match code {
-            KeyCode::Esc | KeyCode::Char('q' | 'w' | 'c' | 'n' | '?') => self.overlay = None,
-            KeyCode::Char('j') | KeyCode::Down => overlay.scroll = overlay.scroll.saturating_add(1),
-            KeyCode::Char('k') | KeyCode::Up => overlay.scroll = overlay.scroll.saturating_sub(1),
-            KeyCode::PageDown | KeyCode::Char(' ') => {
-                overlay.scroll = overlay.scroll.saturating_add(20);
-            }
-            KeyCode::PageUp => overlay.scroll = overlay.scroll.saturating_sub(20),
-            KeyCode::Char('g') | KeyCode::Home => overlay.scroll = 0,
-            KeyCode::Char('G') | KeyCode::End => overlay.scroll = u16::MAX,
-            _ => {}
-        }
-    }
-
-    // -- mouse -----------------------------------------------------------
-
-    fn hit(&self, column: u16, row: u16) -> Option<Hit> {
-        let at = Position::new(column, row);
-        self.hits
-            .iter()
-            .rev()
-            .find(|(area, _)| area.contains(at))
-            .map(|&(_, hit)| hit)
+        self.overlay = Some(Overlay::new(title, text));
     }
 
     fn on_mouse(&mut self, mouse: MouseEvent) {
         if let Some(overlay) = &mut self.overlay {
             match mouse.kind {
-                MouseEventKind::ScrollDown => overlay.scroll = overlay.scroll.saturating_add(3),
-                MouseEventKind::ScrollUp => overlay.scroll = overlay.scroll.saturating_sub(3),
+                MouseEventKind::ScrollDown => overlay.scroll_wheel(true),
+                MouseEventKind::ScrollUp => overlay.scroll_wheel(false),
                 _ => {}
             }
+
             return;
         }
-        let hit = self.hit(mouse.column, mouse.row);
+
+        let hit = self.hits.at(mouse.column, mouse.row);
+
         match mouse.kind {
             MouseEventKind::Moved | MouseEventKind::Drag(_) => self.hover = hit,
             MouseEventKind::Down(MouseButton::Left) => match hit {
                 Some(Hit::Lock) => self.controller.toggle_lock(),
                 Some(Hit::About) => self.show("About", legal::about()),
                 Some(Hit::Select(bus)) => self.controller.select_bus(bus),
-                Some(Hit::Step { bus, delta }) => {
-                    self.controller.select_bus(bus);
-                    self.controller.step(delta.signum(), STEP, Some(bus));
-                }
+                Some(Hit::Step { bus, steps }) => self.controller.click_step(bus, steps),
                 None => {}
             },
             _ => {}
         }
+    }
+}
+
+fn to_key(code: KeyCode) -> Option<Key> {
+    match code {
+        KeyCode::Char(c) => Some(Key::Char(c)),
+        KeyCode::Left => Some(Key::Left),
+        KeyCode::Right => Some(Key::Right),
+        KeyCode::Up => Some(Key::Up),
+        KeyCode::Down => Some(Key::Down),
+        KeyCode::Esc => Some(Key::Escape),
+        _ => None,
     }
 }
 
@@ -305,16 +276,19 @@ mod tests {
     use ratatui::backend::TestBackend;
     use ratatui::crossterm::event::KeyEventState;
     use std::sync::Arc;
+    use std::time::Instant;
 
     fn app(monitors: u32) -> App {
         let controller =
             Controller::new(Arc::new(Fake::new(monitors, Duration::ZERO)), || {}, |_| {});
         controller.reload();
         let deadline = Instant::now() + Duration::from_secs(5);
+
         while !controller.view().detected {
             assert!(Instant::now() < deadline, "detection timed out");
             thread::sleep(Duration::from_millis(5));
         }
+
         App::new(controller)
     }
 
@@ -336,13 +310,15 @@ mod tests {
     }
 
     fn click(app: &mut App, hit: Hit) {
-        let (area, _) = *app.hits.iter().find(|(_, h)| *h == hit).expect("hit drawn");
+        let area = app.hits.area(hit).expect("hit drawn");
+
         let mouse = MouseEvent {
             kind: MouseEventKind::Down(MouseButton::Left),
             column: area.x + area.width / 2,
             row: area.y + area.height / 2,
             modifiers: KeyModifiers::NONE,
         };
+
         app.handle(Event::Input(Input::Mouse(mouse)));
     }
 
@@ -353,6 +329,7 @@ mod tests {
             kind: KeyEventKind::Press,
             state: KeyEventState::NONE,
         };
+
         app.handle(Event::Input(Input::Key(event)));
     }
 
@@ -366,14 +343,14 @@ mod tests {
         assert!(screen.contains("display 2 · card0-DP-2 · i2c-101"));
         assert!(screen.contains("██████████"));
 
-        click(&mut app, Hit::Step { bus: 101, delta: 1 });
+        click(&mut app, Hit::Step { bus: 101, steps: 1 });
         let screen = render(&mut app, 120, 34);
         assert!(screen.contains("Fake Monitor 2  40% …"), "{screen}");
         click(
             &mut app,
             Hit::Step {
                 bus: 100,
-                delta: -1,
+                steps: -1,
             },
         );
         assert_eq!(app.controller.view().monitors[0].value, Some(15));
@@ -410,10 +387,12 @@ mod tests {
         click(&mut app, Hit::About);
         let screen = render(&mut app, 120, 40);
         assert!(screen.contains("About") && screen.contains("GNU General Public License"));
+
         // Tiny terminals must not panic.
         for (w, h) in [(20, 8), (5, 3), (1, 1)] {
             render(&mut app, w, h);
         }
+
         let mut app = self::app(16);
         render(&mut app, 80, 24);
     }

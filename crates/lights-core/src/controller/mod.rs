@@ -30,112 +30,25 @@
 //! (a message for the user) may be called from any thread and are never
 //! called while holding the mutex; the UI marshals them onto its own thread.
 
-use std::collections::{HashMap, HashSet};
+mod state;
+mod view;
+
+use std::collections::HashMap;
 use std::sync::{Arc, Condvar, Mutex, MutexGuard, PoisonError};
 use std::thread;
 use std::time::Duration;
 
 use crate::backend::Backend;
 use crate::brightness;
+use crate::grid::Grid;
 use crate::monitors::Display;
 
-pub const REFRESH: Duration = Duration::from_millis(1500);
+use state::{Readings, State, bus_of};
+pub use view::{MonitorView, View};
+
+const REFRESH: Duration = Duration::from_millis(1500);
 /// Quiet input time before a target is written.
-pub const DEBOUNCE: Duration = Duration::from_millis(300);
-pub const MAX_COLUMNS: usize = 4;
-/// Shown as at most a 4x4 grid.
-pub const MAX_MONITORS: usize = MAX_COLUMNS * MAX_COLUMNS;
-
-/// Bus -> brightness (`None`: unreadable).
-type Readings = HashMap<u32, Option<i32>>;
-
-/// (columns, rows) of the most square grid holding `count` monitors.
-///
-/// 1 -> 1x1, 2 -> 2x1, 3-4 -> 2x2, 5-6 -> 3x2, 7-9 -> 3x3, 10-12 -> 4x3,
-/// 13-16 -> 4x4.
-pub fn grid_shape(count: usize) -> (usize, usize) {
-    let count = count.clamp(1, MAX_MONITORS);
-    let mut columns = 1;
-    while columns * columns < count {
-        columns += 1;
-    }
-    (columns, count.div_ceil(columns))
-}
-
-fn bus_of(d: &Display) -> u32 {
-    d.bus().expect("only addressable displays are kept")
-}
-
-/// What a UI needs to draw one monitor.
-#[derive(Debug, Clone)]
-pub struct MonitorView {
-    pub display: Display,
-    pub bus: u32,
-    /// Pending target if any, else the last read.
-    pub value: Option<i32>,
-    /// A change is waiting to be written or being written.
-    pub busy: bool,
-    pub selected: bool,
-}
-
-#[derive(Debug, Clone)]
-pub struct View {
-    pub detected: bool,
-    pub locked: bool,
-    /// Changes whenever the set of monitors changes.
-    pub layout: u64,
-    pub monitors: Vec<MonitorView>,
-}
-
-#[derive(Default)]
-struct State {
-    displays: Vec<Display>,
-    detected: bool,
-    layout: u64,
-    selected: usize,
-    locked: bool,
-    values: Readings,
-    /// Targets waiting to be written.
-    pending: HashMap<u32, i32>,
-    /// Buses whose writer is running.
-    writing: HashSet<u32>,
-    /// Buses whose debounce is running. A debounce must still hold its
-    /// bus's token when it elapses, so one replaced by newer input does
-    /// nothing.
-    timers: HashSet<u32>,
-    tokens: HashMap<u32, u64>,
-    /// Bumped per completed write so reads that started earlier are dropped.
-    write_gen: HashMap<u32, u64>,
-}
-
-impl State {
-    fn shown(&self, bus: u32) -> Option<i32> {
-        self.pending
-            .get(&bus)
-            .copied()
-            .or_else(|| self.values.get(&bus).copied().flatten())
-    }
-
-    fn buses(&self) -> Vec<u32> {
-        self.displays.iter().map(bus_of).collect()
-    }
-
-    fn label(&self, bus: u32) -> String {
-        self.displays
-            .iter()
-            .find(|d| d.bus() == Some(bus))
-            .map_or_else(|| "?".to_owned(), Display::label)
-    }
-
-    /// Readings, unless the bus has a write queued or running.
-    fn apply_reads(&mut self, values: Readings) {
-        for (bus, value) in values {
-            if !self.pending.contains_key(&bus) && !self.writing.contains(&bus) {
-                self.values.insert(bus, value);
-            }
-        }
-    }
-}
+const DEBOUNCE: Duration = Duration::from_millis(300);
 
 type Notify = Box<dyn Fn() + Send + Sync>;
 type Report = Box<dyn Fn(String) + Send + Sync>;
@@ -156,6 +69,9 @@ pub struct Controller {
 }
 
 impl Controller {
+    /// Brightness change per key press or click, in percent.
+    pub const STEP: i32 = 5;
+
     pub fn new(
         backend: Arc<dyn Backend>,
         notify: impl Fn() + Send + Sync + 'static,
@@ -172,8 +88,6 @@ impl Controller {
             }),
         }
     }
-
-    // -- lifecycle -------------------------------------------------------
 
     pub fn start(&self) {
         self.reload();
@@ -195,19 +109,21 @@ impl Controller {
             .lock()
             .unwrap_or_else(PoisonError::into_inner) = true;
         self.inner.stop.notify_all();
+
         let pending = {
             let mut st = self.inner.lock();
+
             for bus in std::mem::take(&mut st.timers) {
                 *st.tokens.entry(bus).or_default() += 1;
             }
+
             st.pending.clone()
         };
+
         for (bus, value) in pending {
             let _ = self.inner.backend.set(bus, value);
         }
     }
-
-    // -- reading state ---------------------------------------------------
 
     pub fn view(&self) -> View {
         let st = self.inner.lock();
@@ -217,11 +133,12 @@ impl Controller {
             .enumerate()
             .map(|(pos, d)| {
                 let bus = bus_of(d);
+
                 MonitorView {
                     display: d.clone(),
                     bus,
                     value: st.shown(bus),
-                    busy: st.pending.contains_key(&bus) || st.writing.contains(&bus),
+                    busy: st.busy(bus),
                     selected: st.locked || pos == st.selected,
                 }
             })
@@ -234,49 +151,61 @@ impl Controller {
         }
     }
 
-    // -- input -----------------------------------------------------------
-
     pub fn select(&self, delta: i32) {
         {
             let mut st = self.inner.lock();
             let count = st.displays.len() as i32;
+
             if count == 0 {
                 return;
             }
+
             st.selected = (st.selected as i32 + delta).rem_euclid(count) as usize;
         }
+
         (self.inner.notify)();
     }
 
     pub fn select_bus(&self, bus: u32) {
         {
             let mut st = self.inner.lock();
+
             let Some(pos) = st.buses().iter().position(|&b| b == bus) else {
                 return;
             };
+
             st.selected = pos;
         }
+
         (self.inner.notify)();
     }
 
-    /// Move by `steps` steps of `size`, snapping to multiples of it.
+    /// Move by `steps` steps of `STEP`, snapping to multiples of it.
     ///
     /// Applies to `bus` (default: the selected monitor), or to every
     /// monitor while locked.
-    pub fn step(&self, steps: i32, size: i32, bus: Option<u32>) {
+    pub fn step(&self, steps: i32, bus: Option<u32>) {
         if steps == 0 {
             return;
         }
-        let delta = if steps > 0 { size } else { -size };
+
+        let delta = Self::STEP * steps.signum();
         self.inner.change(
             move |mut value| {
                 for _ in 0..steps.unsigned_abs() {
                     value = brightness::snap_step(value, delta);
                 }
+
                 value
             },
             bus,
         );
+    }
+
+    /// A click on one of a monitor's halves: select it and step it.
+    pub fn click_step(&self, bus: u32, steps: i32) {
+        self.select_bus(bus);
+        self.step(steps, Some(bus));
     }
 
     pub fn set_level(&self, value: i32, bus: Option<u32>) {
@@ -287,30 +216,34 @@ impl Controller {
     pub fn toggle_lock(&self) {
         let message = {
             let mut st = self.inner.lock();
+
             if st.locked {
                 st.locked = false;
                 None
             } else if st.displays.is_empty() {
                 None
             } else {
-                let selected = bus_of(&st.displays[st.selected]);
-                match st.shown(selected) {
+                match st.shown(st.selected_bus()) {
                     None => Some("cannot link: brightness unknown".to_owned()),
                     Some(base) => {
                         st.locked = true;
+
                         for bus in st.buses() {
                             if st.shown(bus) != Some(base) {
                                 self.inner.queue(&mut st, bus, base);
                             }
                         }
+
                         Some(format!("linked: all monitors at {base}%"))
                     }
                 }
             }
         };
+
         if let Some(message) = message {
             (self.inner.report)(message);
         }
+
         (self.inner.notify)();
     }
 }
@@ -323,10 +256,13 @@ impl Inner {
     fn change(self: &Arc<Self>, compute: impl Fn(i32) -> i32, bus: Option<u32>) {
         let error = {
             let mut st = self.lock();
+
             if st.displays.is_empty() {
                 return;
             }
-            let bus = bus.unwrap_or_else(|| bus_of(&st.displays[st.selected]));
+
+            let bus = bus.unwrap_or_else(|| st.selected_bus());
+
             match st.shown(bus) {
                 None => Some(format!("display {}: brightness unknown", st.label(bus))),
                 Some(base) => {
@@ -339,20 +275,22 @@ impl Inner {
                     if buses.is_empty() {
                         return;
                     }
+
                     for b in buses {
                         self.queue(&mut st, b, target);
                     }
+
                     None
                 }
             }
         };
+
         if let Some(error) = error {
             (self.report)(error);
         }
+
         (self.notify)();
     }
-
-    // -- debounced writes ------------------------------------------------
 
     /// Queue `value` for `bus` and restart its debounce.
     fn queue(self: &Arc<Self>, st: &mut State, bus: u32, value: i32) {
@@ -362,6 +300,7 @@ impl Inner {
         let token = *token;
         st.timers.insert(bus);
         let inner = self.clone();
+
         thread::spawn(move || {
             thread::sleep(DEBOUNCE);
             inner.debounce_elapsed(bus, token);
@@ -371,25 +310,32 @@ impl Inner {
     fn debounce_elapsed(self: &Arc<Self>, bus: u32, token: u64) {
         let start = {
             let mut st = self.lock();
+
             if st.tokens.get(&bus) != Some(&token) {
                 return; // replaced by newer input
             }
+
             st.timers.remove(&bus);
+
             if st.writing.contains(&bus) {
                 return; // the running writer picks the target up
             }
+
             // Input that netted out (e.g. + then -) needs no write.
             if st.pending.get(&bus).copied() == st.values.get(&bus).copied().flatten() {
                 st.pending.remove(&bus);
                 false
             } else {
                 let start = st.pending.contains_key(&bus);
+
                 if start {
                     st.writing.insert(bus);
                 }
+
                 start
             }
         };
+
         if start {
             let inner = self.clone();
             thread::spawn(move || inner.write_loop(bus));
@@ -412,11 +358,14 @@ impl Inner {
                 if target.is_none() {
                     st.writing.remove(&bus);
                 }
+
                 target
             };
+
             let Some(target) = target else {
                 break;
             };
+
             if self.backend.set(bus, target).is_err() {
                 let label = {
                     let mut st = self.lock();
@@ -424,24 +373,27 @@ impl Inner {
                     st.writing.remove(&bus);
                     st.label(bus)
                 };
+
                 (self.report)(format!("display {label}: cannot adjust brightness"));
                 break;
             }
+
             {
                 let mut st = self.lock();
                 st.values.insert(bus, Some(target));
                 *st.write_gen.entry(bus).or_default() += 1;
+
                 // Drop the target only if no newer one arrived during the write.
                 if st.pending.get(&bus) == Some(&target) {
                     st.pending.remove(&bus);
                 }
             }
+
             (self.notify)();
         }
+
         (self.notify)();
     }
-
-    // -- detection and polling -------------------------------------------
 
     fn read_all(&self, buses: &[u32]) -> Readings {
         thread::scope(|scope| {
@@ -464,13 +416,14 @@ impl Inner {
                 Vec::new()
             }
         };
-        if displays.len() > MAX_MONITORS {
-            (self.report)(format!(
-                "showing {MAX_MONITORS} of {} monitors",
-                displays.len()
-            ));
-            displays.truncate(MAX_MONITORS);
+
+        let max = Grid::MAX.cells();
+
+        if displays.len() > max {
+            (self.report)(format!("showing {max} of {} monitors", displays.len()));
+            displays.truncate(max);
         }
+
         let buses: Vec<u32> = displays.iter().map(bus_of).collect();
         let values = self.read_all(&buses);
 
@@ -480,16 +433,21 @@ impl Inner {
 
         {
             let mut st = self.lock();
+
             if key(&displays) != key(&st.displays) {
                 st.layout += 1;
             }
+
             st.displays = displays;
             st.detected = true;
+
             if st.selected >= st.displays.len() {
                 st.selected = 0;
             }
+
             st.apply_reads(values);
         }
+
         (self.notify)();
     }
 
@@ -509,24 +467,28 @@ impl Inner {
                 let st = self.lock();
                 st.buses()
                     .into_iter()
-                    .filter(|b| !st.writing.contains(b) && !st.pending.contains_key(b))
-                    .map(|b| (b, st.write_gen.get(&b).copied().unwrap_or(0)))
+                    .filter(|&b| !st.busy(b))
+                    .map(|b| (b, st.write_gen(b)))
                     .collect()
             };
+
             if gens.is_empty() {
                 continue;
             }
+
             let buses: Vec<u32> = gens.keys().copied().collect();
+
             let values = self.read_all(&buses);
             {
                 let mut st = self.lock();
                 // A write that finished while reading makes that reading stale.
                 let fresh = values
                     .into_iter()
-                    .filter(|(b, _)| st.write_gen.get(b).copied().unwrap_or(0) == gens[b])
+                    .filter(|(b, _)| st.write_gen(*b) == gens[b])
                     .collect();
                 st.apply_reads(fresh);
             }
+
             (self.notify)();
         }
     }
@@ -536,33 +498,9 @@ impl Inner {
 mod tests {
     use super::*;
     use crate::backend::Fake;
+    use crate::ddcutil::DdcError;
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::time::Instant;
-
-    #[test]
-    fn grid_is_most_square() {
-        let shapes: Vec<_> = [1, 2, 3, 4, 5, 6, 7, 9, 10, 12, 13, 16, 17]
-            .map(grid_shape)
-            .into();
-        assert_eq!(
-            shapes,
-            [
-                (1, 1),
-                (2, 1),
-                (2, 2),
-                (2, 2),
-                (3, 2),
-                (3, 2),
-                (3, 3),
-                (3, 3),
-                (4, 3),
-                (4, 3),
-                (4, 4),
-                (4, 4),
-                (4, 4)
-            ]
-        );
-    }
 
     /// A controller over two fake monitors (buses 100, 101 at 20% and 35%)
     /// with the given call delay, loaded and ready.
@@ -575,6 +513,7 @@ mod tests {
 
     fn wait_until(what: impl Fn() -> bool) {
         let deadline = Instant::now() + Duration::from_secs(5);
+
         while !what() {
             assert!(Instant::now() < deadline, "timed out");
             thread::sleep(Duration::from_millis(10));
@@ -589,18 +528,22 @@ mod tests {
     fn burst_of_input_becomes_one_write() {
         let writes = Arc::new(AtomicUsize::new(0));
         struct Counting(Arc<Fake>, Arc<AtomicUsize>);
+
         impl Backend for Counting {
-            fn detect(&self) -> Result<Vec<Display>, brightness::DdcError> {
+            fn detect(&self) -> Result<Vec<Display>, DdcError> {
                 self.0.detect()
             }
-            fn get(&self, bus: u32) -> Result<i32, brightness::DdcError> {
+
+            fn get(&self, bus: u32) -> Result<i32, DdcError> {
                 self.0.get(bus)
             }
-            fn set(&self, bus: u32, value: i32) -> Result<i32, brightness::DdcError> {
+
+            fn set(&self, bus: u32, value: i32) -> Result<i32, DdcError> {
                 self.1.fetch_add(1, Ordering::SeqCst);
                 self.0.set(bus, value)
             }
         }
+
         let fake = Arc::new(Fake::new(2, Duration::ZERO));
         let c = Controller::new(
             Arc::new(Counting(fake.clone(), writes.clone())),
@@ -610,16 +553,17 @@ mod tests {
         c.inner.load();
 
         for _ in 0..4 {
-            c.step(1, 5, None); // 20 -> 25 -> 30 -> 35 -> 40
+            c.step(1, None); // 20 -> 25 -> 30 -> 35 -> 40
         }
+
         assert_eq!(c.view().monitors[0].value, Some(40));
         wait_until(|| idle(&c));
         assert_eq!(writes.load(Ordering::SeqCst), 1);
         assert_eq!(fake.value(100), Some(40));
 
         // Input that nets to zero writes nothing.
-        c.step(1, 5, None);
-        c.step(-1, 5, None);
+        c.step(1, None);
+        c.step(-1, None);
         wait_until(|| idle(&c));
         assert_eq!(writes.load(Ordering::SeqCst), 1);
     }
@@ -630,7 +574,7 @@ mod tests {
         c.select_bus(101); // at 35%
         c.toggle_lock();
         assert!(c.view().locked);
-        c.step(1, 5, None);
+        c.step(1, None);
         wait_until(|| idle(&c));
         assert_eq!(fake.value(100), Some(40));
         assert_eq!(fake.value(101), Some(40));
@@ -642,15 +586,15 @@ mod tests {
         c.set_level(100, Some(100));
         c.set_level(0, Some(101));
         wait_until(|| idle(&c));
-        c.step(1, 5, Some(100));
-        c.step(-1, 5, Some(101));
+        c.step(1, Some(100));
+        c.step(-1, Some(101));
         assert!(idle(&c));
 
         c.toggle_lock(); // selected monitor is at 100%
         wait_until(|| idle(&c));
-        c.step(1, 5, None);
+        c.step(1, None);
         assert!(idle(&c));
-        c.step(-1, 5, None);
+        c.step(-1, None);
         assert!(!idle(&c));
     }
 

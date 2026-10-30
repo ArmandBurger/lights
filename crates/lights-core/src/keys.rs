@@ -21,9 +21,6 @@
 //! `VimKeys`, which returns what to do. A count prefix repeats a motion, as
 //! in vim: `3k` is three steps up.
 
-/// k / j (or K / J), and a mouse click.
-pub const STEP: i32 = 5;
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Key {
     Char(char),
@@ -40,11 +37,8 @@ pub enum Action {
     Pending,
     /// Move the selection by this many monitors.
     Select(i32),
-    /// Step brightness by `steps` (signed) steps of `size`.
-    Step {
-        steps: i32,
-        size: i32,
-    },
+    /// Step brightness by this many (signed) steps.
+    Step(i32),
     /// Set brightness to this percent.
     Set(i32),
     Lock,
@@ -53,39 +47,26 @@ pub enum Action {
     Quit,
 }
 
-pub const HELP: [(&str, &str); 10] = [
-    ("← → or h l", "select the previous / next monitor"),
-    ("↑ ↓ or k j", "brighter / dimmer by 5%"),
-    ("3 then ↑", "a number first repeats: 15% brighter"),
-    ("70 then %", "set brightness to 70%"),
-    ("gg / G", "full brightness / off (100% / 0%)"),
-    ("s", "link: adjust all monitors together"),
-    ("r", "look for monitors again"),
-    ("?", "show this list"),
-    ("q", "quit"),
-    ("Esc", "cancel a number you started typing"),
-];
-
-pub const HELP_LINE: &str = "←→ select · ↑↓ brightness · s link · ? more keys · q quit";
-
-fn motion(key: Key) -> Option<Action> {
-    let step = |steps, size| Some(Action::Step { steps, size });
-    match key {
-        Key::Char('h') | Key::Left => Some(Action::Select(-1)),
-        Key::Char('l') | Key::Right => Some(Action::Select(1)),
-        Key::Char('k' | 'K') | Key::Up => step(1, STEP),
-        Key::Char('j' | 'J') | Key::Down => step(-1, STEP),
-        _ => None,
+impl Action {
+    /// A motion `count` times.
+    fn motion(key: Key, count: i32) -> Option<Self> {
+        match key {
+            Key::Char('h') | Key::Left => Some(Self::Select(-count)),
+            Key::Char('l') | Key::Right => Some(Self::Select(count)),
+            Key::Char('k' | 'K') | Key::Up => Some(Self::Step(count)),
+            Key::Char('j' | 'J') | Key::Down => Some(Self::Step(-count)),
+            _ => None,
+        }
     }
-}
 
-fn command(key: Key) -> Option<Action> {
-    match key {
-        Key::Char('s') => Some(Action::Lock),
-        Key::Char('r') => Some(Action::Reload),
-        Key::Char('?') => Some(Action::Help),
-        Key::Char('q') => Some(Action::Quit),
-        _ => None,
+    fn command(key: Key) -> Option<Self> {
+        match key {
+            Key::Char('s') => Some(Self::Lock),
+            Key::Char('r') => Some(Self::Reload),
+            Key::Char('?') => Some(Self::Help),
+            Key::Char('q') => Some(Self::Quit),
+            _ => None,
+        }
     }
 }
 
@@ -96,6 +77,22 @@ pub struct VimKeys {
 }
 
 impl VimKeys {
+    pub const HELP: [(&str, &str); 10] = [
+        ("← → or h l", "select the previous / next monitor"),
+        ("↑ ↓ or k j", "brighter / dimmer by 5%"),
+        ("3 then ↑", "a number first repeats: 15% brighter"),
+        ("70 then %", "set brightness to 70%"),
+        ("gg / G", "full brightness / off (100% / 0%)"),
+        ("s", "link: adjust all monitors together"),
+        ("r", "look for monitors again"),
+        ("?", "show this list"),
+        ("q", "quit"),
+        ("Esc", "cancel a number you started typing"),
+    ];
+
+    /// The most used keys, for a one-line legend.
+    pub const HELP_LINE: &str = "←→ select · ↑↓ brightness · s link · ? more keys · q quit";
+
     pub fn new() -> Self {
         Self::default()
     }
@@ -113,6 +110,7 @@ impl VimKeys {
     /// Handle one key; `None` means the key is not ours.
     pub fn feed(&mut self, key: Key) -> Option<Action> {
         let count: Option<i32> = self.count.parse().ok();
+
         if let Key::Char(digit @ '0'..='9') = key
             && !self.g
         {
@@ -120,33 +118,32 @@ impl VimKeys {
                 self.reset();
                 return None;
             }
+
             if self.count.len() < 3 {
                 self.count.push(digit);
             }
+
             return Some(Action::Pending);
         }
+
         if key == Key::Char('g') {
             if self.g {
                 self.reset();
                 return Some(Action::Set(count.map_or(100, |n| n.min(100))));
             }
+
             self.g = true;
             return Some(Action::Pending);
         }
+
         let had_pending = !self.pending().is_empty();
         self.reset();
+
         match key {
             Key::Escape => had_pending.then_some(Action::Pending),
             Key::Char('G') => Some(Action::Set(count.map_or(0, |n| n.min(100)))),
             Key::Char('%') => count.map(|n| Action::Set(n.min(100))),
-            _ => match motion(key) {
-                Some(Action::Select(n)) => Some(Action::Select(n * count.unwrap_or(1))),
-                Some(Action::Step { steps, size }) => Some(Action::Step {
-                    steps: steps * count.unwrap_or(1),
-                    size,
-                }),
-                _ => command(key),
-            },
+            _ => Action::motion(key, count.unwrap_or(1)).or_else(|| Action::command(key)),
         }
     }
 }
@@ -162,20 +159,8 @@ mod tests {
 
     #[test]
     fn counts_repeat_motions() {
-        assert_eq!(
-            feed("3k").last(),
-            Some(&Some(Action::Step {
-                steps: 3,
-                size: STEP
-            }))
-        );
-        assert_eq!(
-            feed("2J").last(),
-            Some(&Some(Action::Step {
-                steps: -2,
-                size: STEP
-            }))
-        );
+        assert_eq!(feed("3k").last(), Some(&Some(Action::Step(3))));
+        assert_eq!(feed("2J").last(), Some(&Some(Action::Step(-2))));
         assert_eq!(feed("2h").last(), Some(&Some(Action::Select(-2))));
     }
 

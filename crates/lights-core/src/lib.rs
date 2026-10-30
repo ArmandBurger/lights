@@ -21,6 +21,8 @@
 pub mod backend;
 pub mod brightness;
 pub mod controller;
+pub mod ddcutil;
+pub mod grid;
 pub mod keys;
 pub mod legal;
 pub mod monitors;

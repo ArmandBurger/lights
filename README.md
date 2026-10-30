@@ -154,10 +154,12 @@ lights/
 └── crates/
     ├── lights-core/         # shared library
     │   └── src/
-    │       ├── brightness.rs  # get/set via ddcutil (VCP 0x10), retries, bus locks
+    │       ├── ddcutil.rs     # runs ddcutil, one call per bus at a time
+    │       ├── brightness.rs  # get/set via ddcutil (VCP 0x10), retries, step maths
     │       ├── monitors.rs    # `ddcutil detect` parser
-    │       ├── backend.rs     # ddcutil or fake monitors
-    │       ├── controller.rs  # shared state: debounce, lock, polling, writers
+    │       ├── backend/       # ddcutil or fake monitors
+    │       ├── controller/    # shared state: debounce, link, polling, writers
+    │       ├── grid.rs        # how monitors are arranged on screen
     │       ├── keys.rs        # vim-style key handling shared by both UIs
     │       └── legal.rs       # copyright, licence and notice texts
     ├── lights-tui/          # ratatui + crossterm terminal UI

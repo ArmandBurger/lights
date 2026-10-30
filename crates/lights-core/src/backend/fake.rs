@@ -14,42 +14,19 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-//! Where the controller gets monitors and brightness from: ddcutil, or a set
-//! of fake monitors for trying the UIs without touching real ones.
+//! In-memory monitors that answer as slowly as real ones.
 
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex, PoisonError};
+use std::sync::{Mutex, PoisonError};
 use std::thread;
 use std::time::Duration;
 
-use crate::brightness::{self, DdcError};
-use crate::monitors::{self, Display};
+use super::Backend;
+use crate::brightness;
+use crate::ddcutil::DdcError;
+use crate::monitors::Display;
 
-pub trait Backend: Send + Sync {
-    fn detect(&self) -> Result<Vec<Display>, DdcError>;
-    fn get(&self, bus: u32) -> Result<i32, DdcError>;
-    fn set(&self, bus: u32, value: i32) -> Result<i32, DdcError>;
-}
-
-/// Real monitors, through ddcutil.
-pub struct Ddcutil;
-
-impl Backend for Ddcutil {
-    fn detect(&self) -> Result<Vec<Display>, DdcError> {
-        monitors::detect()
-    }
-
-    fn get(&self, bus: u32) -> Result<i32, DdcError> {
-        brightness::get_value(bus)
-    }
-
-    fn set(&self, bus: u32, value: i32) -> Result<i32, DdcError> {
-        brightness::set_value(bus, value)
-    }
-}
-
-/// In-memory monitors that answer as slowly as real ones. Set
-/// `LIGHTS_FAKE_MONITORS=N` to run the TUI or desktop UI against N of them.
+/// Set `LIGHTS_FAKE_MONITORS=N` to run the TUI or desktop UI against N of them.
 pub struct Fake {
     count: u32,
     delay: Duration,
@@ -119,13 +96,5 @@ impl Backend for Fake {
             .unwrap_or_else(PoisonError::into_inner)
             .insert(bus, value);
         Ok(value)
-    }
-}
-
-/// Fake monitors if `LIGHTS_FAKE_MONITORS` is set, else ddcutil.
-pub fn from_env() -> Arc<dyn Backend> {
-    match Fake::from_env() {
-        Some(fake) => Arc::new(fake),
-        None => Arc::new(Ddcutil),
     }
 }
