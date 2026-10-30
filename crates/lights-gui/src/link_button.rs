@@ -27,9 +27,9 @@ pub(crate) struct LinkButton {
 }
 
 impl LinkButton {
-    const LINK_TOOLTIP: &str = "Link: adjust all monitors together  (s)";
+    const LINK_TOOLTIP: &str = "Link: move all monitors together, keeping their differences  (s)";
     const UNLINK_TOOLTIP: &str =
-        "Linked: all monitors change together. Click to adjust each on its own  (s)";
+        "Linked: all monitors move together. Click to adjust each on its own  (s)";
 
     pub fn new() -> Self {
         let icon = gtk::Image::new();

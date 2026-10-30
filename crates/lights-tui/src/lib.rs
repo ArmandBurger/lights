@@ -20,12 +20,14 @@
 //! half (plus) to step brightness by 5, snapping to a multiple of 5 first
 //! (74 -> 75 -> 80). Click a screen to select it. Keys are vim-style (see
 //! `keys::HELP`); w / c / n show the warranty, the licence and third-party
-//! notices. Brightness state, debouncing and the lock live in `Controller`.
+//! notices; p picks a preset from the config file. Brightness state,
+//! debouncing and the lock live in `Controller`.
 
 mod draw;
 mod glyph;
 mod hit;
 mod overlay;
+mod presets;
 mod theme;
 mod toast;
 
@@ -35,6 +37,7 @@ use std::thread;
 use std::time::Duration;
 
 use lights_core::backend;
+use lights_core::config::Config;
 use lights_core::controller::{Controller, View};
 use lights_core::keys::{Action, Key, VimKeys};
 use lights_core::legal;
@@ -47,6 +50,7 @@ use ratatui::crossterm::execute;
 
 use crate::hit::{Hit, Hits};
 use crate::overlay::Overlay;
+use crate::presets::{Pick, PresetPicker};
 use crate::toast::Toast;
 
 enum Event {
@@ -61,6 +65,7 @@ struct App {
     view: View,
     toast: Option<Toast>,
     overlay: Option<Overlay>,
+    picker: Option<PresetPicker>,
     hits: Hits,
     hover: Option<Hit>,
     quit: bool,
@@ -117,6 +122,7 @@ impl App {
             vim: VimKeys::new(),
             toast: None,
             overlay: None,
+            picker: None,
             hits: Hits::default(),
             hover: None,
             quit: false,
@@ -187,6 +193,12 @@ impl App {
             return;
         }
 
+        if let Some(picker) = &mut self.picker {
+            let pick = picker.on_key(event.code);
+            self.on_pick(pick);
+            return;
+        }
+
         let Some(key) = to_key(event.code) else {
             return;
         };
@@ -213,6 +225,13 @@ impl App {
             Action::Step(steps) => c.step(steps, None),
             Action::Set(value) => c.set_level(value, None),
             Action::Lock => c.toggle_lock(),
+            Action::Sync => c.sync(),
+            Action::Presets => match Config::load() {
+                Ok(config) => {
+                    self.picker = Some(PresetPicker::new(config.presets(), config.file()))
+                }
+                Err(e) => self.toast = Some(Toast::new(e)),
+            },
             Action::Reload => c.reload(),
             Action::Help => {
                 let text: Vec<String> = VimKeys::HELP
@@ -222,6 +241,17 @@ impl App {
                 self.show("Keys", text.join("\n"));
             }
             Action::Quit => self.quit = true,
+        }
+    }
+
+    fn on_pick(&mut self, pick: Pick) {
+        match pick {
+            Pick::Keep => {}
+            Pick::Close => self.picker = None,
+            Pick::Apply(level) => {
+                self.picker = None;
+                self.controller.set_all(level);
+            }
         }
     }
 
@@ -242,14 +272,32 @@ impl App {
 
         let hit = self.hits.at(mouse.column, mouse.row);
 
+        if let Some(picker) = &self.picker {
+            match mouse.kind {
+                MouseEventKind::Moved | MouseEventKind::Drag(_) => self.hover = hit,
+                MouseEventKind::Down(MouseButton::Left) => {
+                    let pick = match hit {
+                        Some(Hit::Preset(i)) => picker.pick(i),
+                        _ => Pick::Close,
+                    };
+
+                    self.on_pick(pick);
+                }
+                _ => {}
+            }
+
+            return;
+        }
+
         match mouse.kind {
             MouseEventKind::Moved | MouseEventKind::Drag(_) => self.hover = hit,
             MouseEventKind::Down(MouseButton::Left) => match hit {
                 Some(Hit::Lock) => self.controller.toggle_lock(),
+                Some(Hit::Sync) => self.controller.sync(),
                 Some(Hit::About) => self.show("About", legal::about()),
                 Some(Hit::Select(bus)) => self.controller.select_bus(bus),
                 Some(Hit::Step { bus, steps }) => self.controller.click_step(bus, steps),
-                None => {}
+                Some(Hit::Preset(_)) | None => {}
             },
             _ => {}
         }
@@ -272,9 +320,11 @@ fn to_key(code: KeyCode) -> Option<Key> {
 mod tests {
     use super::*;
     use lights_core::backend::Fake;
+    use lights_core::config::Preset;
     use ratatui::Terminal;
     use ratatui::backend::TestBackend;
     use ratatui::crossterm::event::KeyEventState;
+    use std::path::Path;
     use std::sync::Arc;
     use std::time::Instant;
 
@@ -375,6 +425,39 @@ mod tests {
         assert!(app.overlay.is_none() && !app.quit);
         key(&mut app, 'q');
         assert!(app.quit);
+    }
+
+    #[test]
+    fn presets_set_every_monitor() {
+        let mut app = app(2);
+        let presets = vec![
+            Preset {
+                name: "day".to_owned(),
+                level: 80,
+            },
+            Preset {
+                name: "night".to_owned(),
+                level: 30,
+            },
+        ];
+        app.picker = Some(PresetPicker::new(presets, Path::new("/tmp/config.toml")));
+        let screen = render(&mut app, 100, 30);
+        assert!(screen.contains("2  night   30%"), "{screen}");
+        assert!(screen.contains("edit /tmp/config.toml"), "{screen}");
+
+        key(&mut app, 'j');
+        key(&mut app, 'j');
+        assert_eq!(app.controller.view().monitors[0].value, Some(20));
+        key(&mut app, ' '); // j wraps back to day
+        assert!(app.picker.is_none());
+        let values: Vec<_> = app
+            .controller
+            .view()
+            .monitors
+            .iter()
+            .map(|m| m.value)
+            .collect();
+        assert_eq!(values, [Some(80), Some(80)]);
     }
 
     #[test]

@@ -1,0 +1,7 @@
+{
+    "uuid": "lights@armandburger",
+    "name": "lights",
+    "description": "Monitor brightness: a slider per monitor and your presets, through the lights command",
+    "icon": "display-brightness-symbolic",
+    "max-instances": 1
+}

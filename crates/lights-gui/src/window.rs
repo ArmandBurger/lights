@@ -14,7 +14,8 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-//! The main window: the link button and other actions in the header bar, the
+//! The main window: the link and presets buttons and other actions in the
+//! header bar, the
 //! monitor cards in a grid and the status bar.
 
 use std::cell::{Cell, RefCell};
@@ -32,6 +33,7 @@ use lights_core::{VERSION, legal};
 use crate::card::MonitorCard;
 use crate::icon::Icon;
 use crate::link_button::LinkButton;
+use crate::presets_button::PresetsButton;
 use crate::status_bar::StatusBar;
 
 /// Sent from controller threads to the UI thread.
@@ -51,6 +53,8 @@ pub(crate) struct Window {
     shape: Cell<Option<Grid>>,
     cards: RefCell<Vec<MonitorCard>>,
     link: LinkButton,
+    sync_button: gtk::Button,
+    presets: Rc<PresetsButton>,
     keys_button: gtk::MenuButton,
     stack: gtk::Stack,
     status: gtk::Label,
@@ -98,9 +102,23 @@ impl Window {
             },
         );
 
+        let status_bar = StatusBar::new();
         let header = gtk::HeaderBar::new();
         let link = LinkButton::new();
         header.pack_start(&link.button);
+        let sync_button = gtk::Button::builder()
+            .label("Sync")
+            .tooltip_text("Set the linked monitors to their average brightness  (=)")
+            .visible(false)
+            .build();
+        header.pack_start(&sync_button);
+        let applied = controller.clone();
+        let failed = status_bar.clone();
+        let presets = PresetsButton::new(
+            move |level| applied.set_all(level),
+            move |message| failed.show_message(&message),
+        );
+        header.pack_start(&presets.button);
         let about = gtk::Button::builder()
             .icon_name("help-about-symbolic")
             .tooltip_text("About and licences")
@@ -134,7 +152,6 @@ impl Window {
             .build();
         stack.add_named(&grid, Some("monitors"));
 
-        let status_bar = StatusBar::new();
         let body = gtk::Box::new(gtk::Orientation::Vertical, 0);
         body.append(&stack);
         body.append(&status_bar.root);
@@ -149,6 +166,8 @@ impl Window {
             shape: Cell::new(None),
             cards: RefCell::new(Vec::new()),
             link,
+            sync_button,
+            presets,
             keys_button,
             stack,
             status,
@@ -161,6 +180,9 @@ impl Window {
         ui.link
             .button
             .connect_clicked(move |_| this.controller.toggle_lock());
+        let this = ui.clone();
+        ui.sync_button
+            .connect_clicked(move |_| this.controller.sync());
         let this = ui.clone();
         about.connect_clicked(move |_| this.show_about());
         let this = ui.clone();
@@ -268,6 +290,7 @@ impl Window {
     fn sync(self: &Rc<Self>) {
         let view = self.controller.view();
         self.link.set_linked(view.locked);
+        self.sync_button.set_visible(view.can_sync());
 
         match view.status() {
             Some(status) => {
@@ -342,7 +365,9 @@ impl Window {
     }
 
     fn on_key(&self, keyval: gdk::Key, state: gdk::ModifierType) -> glib::Propagation {
-        if state.intersects(gdk::ModifierType::CONTROL_MASK | gdk::ModifierType::ALT_MASK) {
+        if self.presets.is_open()
+            || state.intersects(gdk::ModifierType::CONTROL_MASK | gdk::ModifierType::ALT_MASK)
+        {
             return glib::Propagation::Proceed;
         }
 
@@ -371,6 +396,8 @@ impl Window {
             Action::Step(steps) => c.step(steps, None),
             Action::Set(value) => c.set_level(value, None),
             Action::Lock => c.toggle_lock(),
+            Action::Sync => c.sync(),
+            Action::Presets => self.presets.popup(),
             Action::Reload => c.reload(),
             Action::Help => self.keys_button.popup(),
             Action::Quit => self.quit(),

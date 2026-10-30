@@ -56,7 +56,7 @@ pub fn clamp(value: i32) -> i32 {
     value.clamp(0, 100)
 }
 
-/// Step by `delta`, landing on a multiple of `|delta|`.
+/// Step by `delta`, landing on a multiple of `|delta|`; not clamped.
 ///
 /// An off-grid value settles on the next grid point first, so with a step
 /// of 5: 74 +5 -> 75, 75 +5 -> 80, 74 -5 -> 70, 70 -5 -> 65.
@@ -64,10 +64,20 @@ pub fn snap_step(value: i32, delta: i32) -> i32 {
     let step = delta.abs();
 
     if delta > 0 {
-        clamp((value.div_euclid(step) + 1) * step)
+        (value.div_euclid(step) + 1) * step
     } else {
-        clamp((-(-value).div_euclid(step) - 1) * step)
+        (-(-value).div_euclid(step) - 1) * step
     }
+}
+
+/// The mean of `values` on the grid of `step`, halves rounding up: with a
+/// step of 5, 82 and 70 -> 76 -> 75, 82 and 73 -> 77.5 -> 80.
+pub fn snapped_mean(values: &[i32], step: i32) -> Option<i32> {
+    let count = i32::try_from(values.len()).ok().filter(|&n| n > 0)?;
+    let sum: i32 = values.iter().sum();
+    // round(sum / count / step) with halves up, in integers.
+    let grid = (2 * sum + count * step).div_euclid(2 * count * step);
+    Some(clamp(grid * step))
 }
 
 pub fn get_value(bus: u32) -> Result<i32, DdcError> {
@@ -128,11 +138,22 @@ mod tests {
         assert_eq!(snap_step(74, -5), 70);
         assert_eq!(snap_step(70, -5), 65);
         assert_eq!(snap_step(98, 5), 100);
-        assert_eq!(snap_step(100, 5), 100);
+        assert_eq!(snap_step(100, 5), 105);
         assert_eq!(snap_step(3, -5), 0);
-        assert_eq!(snap_step(0, -5), 0);
+        assert_eq!(snap_step(-3, 5), 0);
+        assert_eq!(snap_step(0, -5), -5);
         assert_eq!(snap_step(33, 10), 40);
         assert_eq!(snap_step(33, -10), 30);
+    }
+
+    #[test]
+    fn averages_onto_the_grid() {
+        assert_eq!(snapped_mean(&[82, 70], 5), Some(75));
+        assert_eq!(snapped_mean(&[82, 73], 5), Some(80));
+        assert_eq!(snapped_mean(&[77], 5), Some(75));
+        assert_eq!(snapped_mean(&[78], 5), Some(80));
+        assert_eq!(snapped_mean(&[20, 35, 41], 5), Some(30));
+        assert_eq!(snapped_mean(&[], 5), None);
     }
 
     #[test]

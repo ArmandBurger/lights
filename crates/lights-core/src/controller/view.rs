@@ -51,6 +51,11 @@ pub struct View {
 }
 
 impl View {
+    /// Linked monitors that are not all at the same brightness.
+    pub fn can_sync(&self) -> bool {
+        self.locked && self.monitors.windows(2).any(|w| w[0].value != w[1].value)
+    }
+
     /// What to show instead of the monitors, while there are none.
     pub fn status(&self) -> Option<&'static str> {
         if !self.monitors.is_empty() {

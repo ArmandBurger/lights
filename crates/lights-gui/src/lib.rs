@@ -19,12 +19,14 @@
 //! Same model as the TUI: each monitor is a screen with a minus half and a
 //! plus half (click to step by 5, snapping to multiples of 5), its name and
 //! info underneath. Every action is also on the keyboard with vim-style keys
-//! (see `VimKeys::HELP`), handled before GTK's own focus navigation. The
+//! (see `VimKeys::HELP`), handled before GTK's own focus navigation. Presets
+//! live in the config file, which the presets button edits. The
 //! About dialog carries the copyright, licence and third-party notices.
 
 mod card;
 mod icon;
 mod link_button;
+mod presets_button;
 mod scalable_icon;
 mod status_bar;
 mod window;

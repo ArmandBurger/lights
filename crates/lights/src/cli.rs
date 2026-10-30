@@ -19,6 +19,7 @@
 use std::sync::LazyLock;
 
 use clap::{Parser, Subcommand, ValueEnum};
+use lights_core::config::Config;
 use lights_core::ddcutil::DdcError;
 use lights_core::monitors;
 use lights_core::{VERSION, brightness, legal};
@@ -76,6 +77,13 @@ pub enum Command {
         #[arg(default_value_t = DEFAULT_STEP)]
         step: i32,
     },
+    /// List the presets, or set every display to one: `preset [name]`
+    Preset {
+        name: Option<String>,
+        /// Print the list as JSON
+        #[arg(long)]
+        json: bool,
+    },
     /// Launch the interactive TUI (the default)
     Tui,
     /// Launch the desktop (GTK 4) UI
@@ -105,6 +113,7 @@ impl Command {
             Self::Down { target, step } => {
                 Self::apply(target, |bus| brightness::bump_value(bus, -step))
             }
+            Self::Preset { name, json } => Self::preset(name.as_deref(), *json),
             Self::Tui => Self::tui(),
             Self::Gui => Self::gui(),
             Self::Show { what } => Self::show(*what),
@@ -181,6 +190,42 @@ impl Command {
             .parse()
             .map_err(|_| format!("invalid percent '{percent}' (expected 0-100)"))?;
         Self::apply(&target, |bus| brightness::set_value(bus, percent))
+    }
+
+    fn preset(name: Option<&str>, json: bool) -> Result<bool, String> {
+        let config = Config::load()?;
+
+        let Some(name) = name else {
+            let presets = config.presets();
+
+            if json {
+                let out: Vec<serde_json::Value> = presets
+                    .iter()
+                    .map(|p| serde_json::json!({"name": p.name, "brightness": p.level}))
+                    .collect();
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&out).map_err(|e| e.to_string())?
+                );
+            } else {
+                for p in &presets {
+                    println!("{:<12} {}%", p.name, p.level);
+                }
+
+                println!("(edit {})", config.file().display());
+            }
+
+            return Ok(true);
+        };
+
+        let preset = config.preset(name).ok_or_else(|| {
+            format!(
+                "unknown preset '{name}' (see `lights preset`, or add it to {})",
+                config.file().display()
+            )
+        })?;
+
+        Self::apply(&Target::All, |bus| brightness::set_value(bus, preset.level))
     }
 
     /// Run `f` on every target and print the brightness it leaves.

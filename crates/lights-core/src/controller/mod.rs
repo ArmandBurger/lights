@@ -23,13 +23,14 @@
 //! writer thread per monitor applies the latest target. A polling thread
 //! reads values every `REFRESH`, skipping monitors with a write in flight.
 //!
-//! The lock syncs every monitor to the selected one's brightness; while
-//! locked, every change applies the same value to all monitors.
+//! The lock links the monitors: they move together and keep the differences
+//! in brightness they had when linked (see `Link`).
 //!
 //! State is guarded by one mutex. `notify` (state changed) and `report`
 //! (a message for the user) may be called from any thread and are never
 //! called while holding the mutex; the UI marshals them onto its own thread.
 
+mod link;
 mod state;
 mod view;
 
@@ -43,6 +44,7 @@ use crate::brightness;
 use crate::grid::Grid;
 use crate::monitors::Display;
 
+use link::Link;
 use state::{Readings, State, bus_of};
 pub use view::{MonitorView, View};
 
@@ -139,13 +141,13 @@ impl Controller {
                     bus,
                     value: st.shown(bus),
                     busy: st.busy(bus),
-                    selected: st.locked || pos == st.selected,
+                    selected: st.link.is_some() || pos == st.selected,
                 }
             })
             .collect();
         View {
             detected: st.detected,
-            locked: st.locked,
+            locked: st.link.is_some(),
             layout: st.layout,
             monitors,
         }
@@ -182,8 +184,8 @@ impl Controller {
 
     /// Move by `steps` steps of `STEP`, snapping to multiples of it.
     ///
-    /// Applies to `bus` (default: the selected monitor), or to every
-    /// monitor while locked.
+    /// Applies to `bus` (default: the selected monitor), moving every
+    /// monitor with it while locked.
     pub fn step(&self, steps: i32, bus: Option<u32>) {
         if steps == 0 {
             return;
@@ -212,30 +214,80 @@ impl Controller {
         self.inner.change(move |_| value, bus);
     }
 
-    /// Lock (syncing all monitors to the selected one) or unlock.
+    /// Set every monitor to exactly `value` (a preset). A link stays, with
+    /// the monitors now even.
+    pub fn set_all(&self, value: i32) {
+        let value = brightness::clamp(value);
+
+        {
+            let mut st = self.inner.lock();
+            let buses = st.buses();
+
+            if st.link.is_some() {
+                st.link = Some(Link::new(buses.iter().map(|&bus| (bus, value)), value));
+            }
+
+            for bus in buses {
+                if st.shown(bus) != Some(value) {
+                    self.inner.queue(&mut st, bus, value);
+                }
+            }
+        }
+
+        (self.inner.notify)();
+    }
+
+    /// While locked and uneven, set every monitor to their average
+    /// brightness, on the `STEP` grid, and keep them even from then on.
+    pub fn sync(&self) {
+        let level = {
+            let st = self.inner.lock();
+
+            if st.link.is_none() {
+                return;
+            }
+
+            let values: Option<Vec<i32>> = st.buses().into_iter().map(|b| st.shown(b)).collect();
+
+            if values
+                .as_ref()
+                .is_some_and(|v| v.windows(2).all(|w| w[0] == w[1]))
+            {
+                return;
+            }
+
+            values.and_then(|values| brightness::snapped_mean(&values, Self::STEP))
+        };
+
+        match level {
+            Some(level) => {
+                self.set_all(level);
+                (self.inner.report)(format!("synced: all monitors at {level}%"));
+            }
+            None => (self.inner.report)("cannot sync: brightness unknown".to_owned()),
+        }
+    }
+
+    /// Lock (linking the monitors as they are now) or unlock.
     pub fn toggle_lock(&self) {
         let message = {
             let mut st = self.inner.lock();
 
-            if st.locked {
-                st.locked = false;
-                None
-            } else if st.displays.is_empty() {
+            if st.link.take().is_some() || st.displays.is_empty() {
                 None
             } else {
-                match st.shown(st.selected_bus()) {
-                    None => Some("cannot link: brightness unknown".to_owned()),
-                    Some(base) => {
-                        st.locked = true;
+                let values: Option<Vec<(u32, i32)>> = st
+                    .buses()
+                    .into_iter()
+                    .map(|bus| st.shown(bus).map(|value| (bus, value)))
+                    .collect();
 
-                        for bus in st.buses() {
-                            if st.shown(bus) != Some(base) {
-                                self.inner.queue(&mut st, bus, base);
-                            }
-                        }
-
-                        Some(format!("linked: all monitors at {base}%"))
+                match (values, st.shown(st.selected_bus())) {
+                    (Some(values), Some(level)) => {
+                        st.link = Some(Link::new(values, level));
+                        Some("linked: monitors move together, keeping their differences".to_owned())
                     }
+                    _ => Some("cannot link: brightness unknown".to_owned()),
                 }
             }
         };
@@ -263,20 +315,30 @@ impl Inner {
 
             let bus = bus.unwrap_or_else(|| st.selected_bus());
 
-            match st.shown(bus) {
+            let shown = st.shown(bus);
+
+            let targets = match (&mut st.link, shown) {
+                (Some(link), _) => {
+                    link.move_to(bus, compute(link.unclamped(bus)));
+                    Some(link.targets())
+                }
+                (None, Some(base)) => Some(vec![(bus, brightness::clamp(compute(base)))]),
+                (None, None) => None,
+            };
+
+            match targets {
                 None => Some(format!("display {}: brightness unknown", st.label(bus))),
-                Some(base) => {
-                    let target = brightness::clamp(compute(base));
-                    let buses = if st.locked { st.buses() } else { vec![bus] };
-                    let buses: Vec<u32> = buses
+                Some(targets) => {
+                    let targets: Vec<(u32, i32)> = targets
                         .into_iter()
-                        .filter(|&b| st.shown(b) != Some(target))
+                        .filter(|&(b, target)| st.shown(b) != Some(target))
                         .collect();
-                    if buses.is_empty() {
+
+                    if targets.is_empty() {
                         return;
                     }
 
-                    for b in buses {
+                    for (b, target) in targets {
                         self.queue(&mut st, b, target);
                     }
 
@@ -436,6 +498,7 @@ impl Inner {
 
             if key(&displays) != key(&st.displays) {
                 st.layout += 1;
+                st.link = None;
             }
 
             st.displays = displays;
@@ -568,16 +631,47 @@ mod tests {
         assert_eq!(writes.load(Ordering::SeqCst), 1);
     }
 
+    fn values(c: &Controller) -> Vec<Option<i32>> {
+        c.view().monitors.iter().map(|m| m.value).collect()
+    }
+
     #[test]
-    fn lock_syncs_and_steps_together() {
+    fn lock_keeps_differences() {
         let (c, fake) = loaded(Duration::ZERO);
-        c.select_bus(101); // at 35%
+        c.select_bus(101); // 20% and 35%
         c.toggle_lock();
         assert!(c.view().locked);
         c.step(1, None);
+        assert_eq!(values(&c), [Some(25), Some(40)]);
+
+        c.set_level(100, None);
+        c.step(3, None);
+        assert_eq!(values(&c), [Some(100), Some(100)]);
+        c.step(1, None);
+        assert_eq!(values(&c), [Some(100), Some(100)]);
+        c.step(-1, None);
+        assert_eq!(values(&c), [Some(95), Some(100)]);
         wait_until(|| idle(&c));
-        assert_eq!(fake.value(100), Some(40));
-        assert_eq!(fake.value(101), Some(40));
+        assert_eq!((fake.value(100), fake.value(101)), (Some(95), Some(100)));
+
+        c.set_all(50);
+        c.step(1, None);
+        assert_eq!(values(&c), [Some(55), Some(55)]);
+    }
+
+    #[test]
+    fn sync_evens_out_linked_monitors() {
+        let (c, _) = loaded(Duration::ZERO);
+        c.sync();
+        assert_eq!(values(&c), [Some(20), Some(35)]);
+
+        c.toggle_lock();
+        assert!(c.view().can_sync());
+        c.sync(); // 27.5 -> 30
+        assert_eq!(values(&c), [Some(30), Some(30)]);
+        assert!(!c.view().can_sync());
+        c.step(1, None);
+        assert_eq!(values(&c), [Some(35), Some(35)]);
     }
 
     #[test]
@@ -589,13 +683,6 @@ mod tests {
         c.step(1, Some(100));
         c.step(-1, Some(101));
         assert!(idle(&c));
-
-        c.toggle_lock(); // selected monitor is at 100%
-        wait_until(|| idle(&c));
-        c.step(1, None);
-        assert!(idle(&c));
-        c.step(-1, None);
-        assert!(!idle(&c));
     }
 
     #[test]

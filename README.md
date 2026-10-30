@@ -44,6 +44,7 @@ lights --help
 | `lights set <target> <percent>` | Set brightness (0–100) on a display. |
 | `lights up <target> [step]`    | Raise brightness by `step` (default 10). |
 | `lights down <target> [step]`  | Lower brightness by `step` (default 10). |
+| `lights preset [name] [--json]` | List the presets, or set every display to one. |
 | `lights` or `lights tui` | Launch the interactive TUI. |
 | `lights gui`     | Launch the desktop UI (also `lights-gui`). |
 
@@ -90,9 +91,31 @@ to step its brightness by **5**. Off-grid values settle on the next multiple
 of 5 first: 74 → 75 → 80 going up, 74 → 70 → 65 going down. Clicking a
 screen also selects it.
 
-**Link:** the *Separate / Linked* button (or `s`) syncs every monitor to the
-selected monitor's brightness. While linked, every change — mouse or
-keyboard — applies the same value to all monitors.
+**Link:** the *Separate / Linked* button (or `s`) links the monitors: every
+change, by mouse or keyboard, moves all of them together. The differences
+they had when linked are kept. If one monitor is 10% dimmer than another, it
+stays 10% dimmer. A monitor pushed against 0% or 100% waits there and gets
+its difference back on the way out. While linked and not all at the same level, *Sync* (or `=`) sets them
+all to their average, on the 5% grid with halves rounding up (82% and 70%
+→ 76% → 75%), and keeps them even from then on.
+
+**Presets:** named levels such as *day* or *night* that set every monitor
+at once. They are kept in `~/.config/lights/config.toml`
+(`$XDG_CONFIG_HOME` is honoured):
+
+```toml
+[presets]
+day = 80
+evening = 50
+night = 30
+dark = 10
+```
+
+Until the file exists, these defaults are used. Edit the file by hand (the
+TUI's `p` list reads it each time it opens), or use the desktop UI's
+*Presets* button to add, change and delete presets. It keeps your comments
+and layout. A preset sets every monitor to exactly its level, so a link
+carries on with the monitors even.
 
 Values refresh automatically every 1.5 s in the background. Input updates
 the screen immediately; the monitor is written once input on it has been
@@ -112,6 +135,8 @@ To try either UI without touching real monitors, set
 | `70` then `%` | Set brightness to 70%. |
 | `gg` / `G` | Full brightness / off (100% / 0%; `40gg` also sets 40%). |
 | `s` | Link or separate the monitors. |
+| `=` | While linked, sync the monitors at their average. |
+| `p` | Pick a preset (`1`–`9` or `j` / `k` and Enter in the TUI). |
 | `r` | Look for monitors again and refresh now. |
 | `?` | Show the keys. |
 | `q` | Quit. |
@@ -125,6 +150,18 @@ press `w` / `c` / `n` for the warranty, licence and third-party notices.
 ```bash
 lights gui   # desktop UI (or lights-gui)
 lights       # TUI, from a real terminal (or lights tui)
+```
+
+## Panel applet (Cinnamon)
+
+`applet/lights@armandburger/` is a Cinnamon panel applet. Its menu has a
+slider per monitor, the presets and *Open lights*. Scrolling on its icon
+steps every monitor by 5%. It runs the `lights` command (from `PATH`, else
+`~/.cargo/bin`), one call at a time. To try it, link it into place and add
+it from *Applets*:
+
+```bash
+ln -s "$PWD/applet/lights@armandburger" ~/.local/share/cinnamon/applets/
 ```
 
 ## Notes
@@ -158,6 +195,7 @@ lights/
     │       ├── brightness.rs  # get/set via ddcutil (VCP 0x10), retries, step maths
     │       ├── monitors.rs    # `ddcutil detect` parser
     │       ├── backend/       # ddcutil or fake monitors
+    │       ├── config.rs      # ~/.config/lights/config.toml (presets)
     │       ├── controller/    # shared state: debounce, link, polling, writers
     │       ├── grid.rs        # how monitors are arranged on screen
     │       ├── keys.rs        # vim-style key handling shared by both UIs
@@ -166,15 +204,18 @@ lights/
     ├── lights-gui/          # GTK 4 desktop UI
     │   └── assets/          # style.css and Fluent UI System Icons (MIT), compiled in
     └── lights/              # the `lights` and `lights-gui` binaries (clap CLI)
+applet/
+└── lights@armandburger/     # Cinnamon panel applet (runs the `lights` command)
 ```
 
 Run the tests with `cargo test --locked --workspace`.
 
 ## Roadmap
 
-Done: brightness CLI, interactive TUI and GTK 4 desktop UI, in Rust.
+Done: brightness CLI, interactive TUI and GTK 4 desktop UI, in Rust;
+relative linking, presets and a Cinnamon panel applet.
 
-Planned: a Cinnamon panel applet with desktop shortcuts.
+Planned: installation (desktop entry, icon and applet).
 
 ## License
 

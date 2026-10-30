@@ -22,9 +22,15 @@ use ratatui::layout::{Position, Rect};
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Hit {
     Lock,
+    Sync,
     About,
     Select(u32),
-    Step { bus: u32, steps: i32 },
+    Step {
+        bus: u32,
+        steps: i32,
+    },
+    /// A row of the preset picker.
+    Preset(usize),
 }
 
 /// The clickable areas of the last draw; later entries are on top.

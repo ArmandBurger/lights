@@ -42,6 +42,10 @@ pub enum Action {
     /// Set brightness to this percent.
     Set(i32),
     Lock,
+    /// Even out linked monitors at their average brightness.
+    Sync,
+    /// Pick a preset to set every monitor to.
+    Presets,
     Reload,
     Help,
     Quit,
@@ -62,6 +66,8 @@ impl Action {
     fn command(key: Key) -> Option<Self> {
         match key {
             Key::Char('s') => Some(Self::Lock),
+            Key::Char('=') => Some(Self::Sync),
+            Key::Char('p') => Some(Self::Presets),
             Key::Char('r') => Some(Self::Reload),
             Key::Char('?') => Some(Self::Help),
             Key::Char('q') => Some(Self::Quit),
@@ -77,13 +83,15 @@ pub struct VimKeys {
 }
 
 impl VimKeys {
-    pub const HELP: [(&str, &str); 10] = [
+    pub const HELP: [(&str, &str); 12] = [
         ("← → or h l", "select the previous / next monitor"),
         ("↑ ↓ or k j", "brighter / dimmer by 5%"),
         ("3 then ↑", "a number first repeats: 15% brighter"),
         ("70 then %", "set brightness to 70%"),
         ("gg / G", "full brightness / off (100% / 0%)"),
-        ("s", "link: adjust all monitors together"),
+        ("s", "link: move all monitors together"),
+        ("=", "sync linked monitors at their average"),
+        ("p", "presets: set all monitors to a saved level"),
         ("r", "look for monitors again"),
         ("?", "show this list"),
         ("q", "quit"),
@@ -91,7 +99,8 @@ impl VimKeys {
     ];
 
     /// The most used keys, for a one-line legend.
-    pub const HELP_LINE: &str = "←→ select · ↑↓ brightness · s link · ? more keys · q quit";
+    pub const HELP_LINE: &str =
+        "←→ select · ↑↓ brightness · s link · p presets · ? more keys · q quit";
 
     pub fn new() -> Self {
         Self::default()

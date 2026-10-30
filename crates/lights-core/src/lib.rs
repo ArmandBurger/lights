@@ -16,10 +16,11 @@
 
 //! Everything the lights CLI, TUI and desktop UI share: monitor detection
 //! and brightness over `ddcutil`, the controller holding brightness state,
-//! the vim-style key handling and the licence texts.
+//! the vim-style key handling, the user's config and the licence texts.
 
 pub mod backend;
 pub mod brightness;
+pub mod config;
 pub mod controller;
 pub mod ddcutil;
 pub mod grid;

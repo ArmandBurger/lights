@@ -20,6 +20,8 @@ use std::collections::{HashMap, HashSet};
 
 use crate::monitors::Display;
 
+use super::link::Link;
+
 /// Bus -> brightness (`None`: unreadable).
 pub(super) type Readings = HashMap<u32, Option<i32>>;
 
@@ -30,7 +32,7 @@ pub(super) struct State {
     pub detected: bool,
     pub layout: u64,
     pub selected: usize,
-    pub locked: bool,
+    pub link: Option<Link>,
     pub values: Readings,
     /// Targets waiting to be written.
     pub pending: HashMap<u32, i32>,

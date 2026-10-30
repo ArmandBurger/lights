@@ -82,6 +82,10 @@ impl App {
             toast.draw(frame, screens);
         }
 
+        if let Some(picker) = &self.picker {
+            picker.draw(frame, &mut self.hits, self.hover);
+        }
+
         if let Some(overlay) = &mut self.overlay {
             overlay.draw(frame);
         }
@@ -103,6 +107,8 @@ impl App {
         self.hits.push(link, Hit::About);
     }
 
+    /// The link button, with a sync button beside it while linked monitors
+    /// differ.
     fn draw_lock(&mut self, frame: &mut Frame, area: Rect) {
         let width = 24.min(area.width);
 
@@ -111,6 +117,29 @@ impl App {
             width,
             ..area
         };
+
+        if self.view.can_sync() {
+            let sync = Rect {
+                x: button.x + button.width + 2,
+                width: 12,
+                ..area
+            }
+            .intersection(area);
+
+            let style = if self.hover == Some(Hit::Sync) {
+                Style::new().bg(FRAME).fg(Color::Black)
+            } else {
+                Style::new().bg(PANEL)
+            };
+
+            frame.render_widget(
+                Paragraph::new(vec![Line::raw(""), Line::raw("= Sync").bold()])
+                    .alignment(Alignment::Center)
+                    .style(style),
+                sync,
+            );
+            self.hits.push(sync, Hit::Sync);
+        }
 
         let locked = self.view.locked;
         let label = if locked { "⇄ Linked" } else { "Separate" };
