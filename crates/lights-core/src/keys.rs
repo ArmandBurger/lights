@@ -21,10 +21,8 @@
 //! `VimKeys`, which returns what to do. A count prefix repeats a motion, as
 //! in vim: `3k` is three steps up.
 
-/// k / j, and a mouse click.
+/// k / j (or K / J), and a mouse click.
 pub const STEP: i32 = 5;
-/// K / J.
-pub const STEP_BIG: i32 = 10;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Key {
@@ -55,32 +53,28 @@ pub enum Action {
     Quit,
 }
 
-pub const HELP: [(&str, &str); 11] = [
-    ("h / l  (← / →)", "select previous / next monitor"),
-    ("k / j  (↑ / ↓)", "brighter / dimmer by 5%"),
-    ("K / J", "brighter / dimmer by 10%"),
-    ("<count>", "repeat, e.g. 3k"),
-    ("<n>%", "set brightness to n%, e.g. 70%"),
-    ("gg / G", "100% / 0%"),
+pub const HELP: [(&str, &str); 10] = [
+    ("← → or h l", "select the previous / next monitor"),
+    ("↑ ↓ or k j", "brighter / dimmer by 5%"),
+    ("3 then ↑", "a number first repeats: 15% brighter"),
+    ("70 then %", "set brightness to 70%"),
+    ("gg / G", "full brightness / off (100% / 0%)"),
     ("s", "link: adjust all monitors together"),
-    ("r", "re-detect monitors"),
-    ("?", "show keys"),
+    ("r", "look for monitors again"),
+    ("?", "show this list"),
     ("q", "quit"),
-    ("Esc", "cancel a pending count"),
+    ("Esc", "cancel a number you started typing"),
 ];
 
-pub const HELP_LINE: &str = "h/l select · k/j ±5 · K/J ±10 · 3k repeat · 70% set · \
-                             gg/G max/min · s link · r refresh · ? keys · q quit";
+pub const HELP_LINE: &str = "←→ select · ↑↓ brightness · s link · ? more keys · q quit";
 
 fn motion(key: Key) -> Option<Action> {
     let step = |steps, size| Some(Action::Step { steps, size });
     match key {
         Key::Char('h') | Key::Left => Some(Action::Select(-1)),
         Key::Char('l') | Key::Right => Some(Action::Select(1)),
-        Key::Char('k') | Key::Up => step(1, STEP),
-        Key::Char('j') | Key::Down => step(-1, STEP),
-        Key::Char('K') => step(1, STEP_BIG),
-        Key::Char('J') => step(-1, STEP_BIG),
+        Key::Char('k' | 'K') | Key::Up => step(1, STEP),
+        Key::Char('j' | 'J') | Key::Down => step(-1, STEP),
         _ => None,
     }
 }
@@ -179,7 +173,7 @@ mod tests {
             feed("2J").last(),
             Some(&Some(Action::Step {
                 steps: -2,
-                size: STEP_BIG
+                size: STEP
             }))
         );
         assert_eq!(feed("2h").last(), Some(&Some(Action::Select(-2))));

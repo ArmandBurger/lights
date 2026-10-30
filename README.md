@@ -106,17 +106,16 @@ To try either UI without touching real monitors, set
 
 | Key | Action |
 |-----|--------|
-| `h` / `l` (`←` / `→`) | Select the previous / next monitor (wraps). |
-| `k` / `j` (`↑` / `↓`) | Brighter / dimmer by **5** (snaps to multiples of 5). |
-| `K` / `J` | Brighter / dimmer by **10**. |
-| `3k`, `2J`, … | Repeat a step. |
-| `70%` | Set brightness to 70%. |
-| `gg` / `G` | 100% / 0% (`40gg` also sets 40%). |
+| `←` / `→` (`h` / `l`) | Select the previous / next monitor (wraps). |
+| `↑` / `↓` (`k` / `j`, `K` / `J`) | Brighter / dimmer by **5** (snaps to multiples of 5). |
+| `3` then `↑` | A number first repeats the step: 3 × 5 = 15% brighter. |
+| `70` then `%` | Set brightness to 70%. |
+| `gg` / `G` | Full brightness / off (100% / 0%; `40gg` also sets 40%). |
 | `s` | Link or separate the monitors. |
-| `r` | Re-detect monitors and refresh now. |
+| `r` | Look for monitors again and refresh now. |
 | `?` | Show the keys. |
 | `q` | Quit. |
-| `Esc` | Cancel a pending count. |
+| `Esc` | Cancel a number you started typing. |
 
 Both UIs show a pending count at the bottom right (like vim's showcmd).
 The desktop UI's About dialog (ⓘ) shows the copyright, licence and

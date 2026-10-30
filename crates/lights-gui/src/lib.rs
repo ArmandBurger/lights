@@ -33,7 +33,7 @@ use gtk::prelude::*;
 use gtk::{gdk, gio, glib, pango};
 use lights_core::backend;
 use lights_core::controller::{Controller, grid_shape};
-use lights_core::keys::{Action, HELP, Key, STEP, VimKeys};
+use lights_core::keys::{Action, HELP, HELP_LINE, Key, STEP, VimKeys};
 use lights_core::{VERSION, legal};
 
 use crate::card::MonitorCard;
@@ -182,6 +182,8 @@ impl Window {
 
         let bar = gtk::Box::builder().css_classes(["statusbar"]).build();
         let message = gtk::Label::builder()
+            .label(HELP_LINE)
+            .css_classes(["dim-label"])
             .hexpand(true)
             .xalign(0.0)
             .ellipsize(pango::EllipsizeMode::End)
@@ -328,13 +330,15 @@ impl Window {
         let token = self.message_token.get() + 1;
         self.message_token.set(token);
         self.message.set_label(message);
+        self.message.remove_css_class("dim-label");
         let this = Rc::downgrade(self);
         glib::timeout_add_seconds_local_once(MESSAGE_SECONDS, move || {
             // Only clear if no newer message arrived in the meantime.
             if let Some(this) = this.upgrade()
                 && this.message_token.get() == token
             {
-                this.message.set_label("");
+                this.message.set_label(HELP_LINE);
+                this.message.add_css_class("dim-label");
             }
         });
     }
