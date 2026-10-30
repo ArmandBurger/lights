@@ -50,6 +50,7 @@ fn startup() {
     };
 
     gtk::IconTheme::for_display(&display).add_resource_path(Icon::RESOURCE_PATH);
+    gtk::Window::set_default_icon_name(APP_ID);
     let provider = gtk::CssProvider::new();
     provider.load_from_string(CSS);
     gtk::style_context_add_provider_for_display(

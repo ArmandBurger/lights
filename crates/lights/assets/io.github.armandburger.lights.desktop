@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=lights
+Comment=Adjust your external monitors' brightness
+Exec=lights-gui
+Icon=io.github.armandburger.lights
+Terminal=false
+Categories=Settings;HardwareSettings;
+Keywords=brightness;monitor;display;ddc;ddcutil;
+StartupNotify=true

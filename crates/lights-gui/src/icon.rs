@@ -27,7 +27,8 @@ pub(crate) enum Icon {
 }
 
 impl Icon {
-    /// Holds `scalable/actions/*-symbolic.svg` (see `assets/icons/lights.gresource.xml`).
+    /// Holds `scalable/actions/*-symbolic.svg` and the app icon in
+    /// `scalable/apps` (see `assets/icons/lights.gresource.xml`).
     pub const RESOURCE_PATH: &str = "/io/github/armandburger/lights/icons";
 
     pub const fn name(self) -> &'static str {

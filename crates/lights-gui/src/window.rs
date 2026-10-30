@@ -31,7 +31,6 @@ use lights_core::keys::{Action, Key, VimKeys};
 use lights_core::{VERSION, legal};
 
 use crate::card::MonitorCard;
-use crate::icon::Icon;
 use crate::link_button::LinkButton;
 use crate::presets_button::PresetsButton;
 use crate::status_bar::StatusBar;
@@ -349,7 +348,7 @@ impl Window {
             .authors([format!("Armand Burger {}", legal::WEBSITE)])
             .website(legal::WEBSITE)
             .website_label(legal::CONTACT)
-            .logo_icon_name(Icon::BrightnessHigh.name())
+            .logo_icon_name(crate::APP_ID)
             .license_type(gtk::License::Custom)
             .license(legal::about())
             .wrap_license(false)

@@ -20,6 +20,11 @@ which remains under its own license.
   - `ic_fluent_link_dismiss_24_filled-symbolic.svg`
 - Modifications: fill colour changed from `#212121` to `#ffffff`; files
   renamed. The UI recolours them to match the desktop theme.
+- The app icon,
+  `crates/lights-gui/assets/icons/hicolor/scalable/apps/io.github.armandburger.lights.svg`,
+  is `ic_fluent_lightbulb_person_24_filled.svg` in white, scaled and placed
+  on an amber rounded square. It is compiled into the binary and installed
+  by the `.deb`.
 
 `lights` is not made, affiliated with or endorsed by Microsoft.
 

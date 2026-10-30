@@ -7,6 +7,25 @@ vim-style keys.
 
 ## Installation
 
+On Debian, Ubuntu, Linux Mint and other distributions based on Ubuntu 24.04
+or newer, download the `.deb` from the
+[latest release](https://github.com/ArmandBurger/lights/releases/latest)
+and install it:
+
+```bash
+sudo apt install ./lights_*_amd64.deb
+```
+
+apt pulls in `ddcutil` and GTK 4. The package puts `lights` and `lights-gui`
+in `/usr/bin`, which is already on your `PATH`, so `lights` works from any
+terminal (`lights up`, `lights preset night`, …). It also adds *lights* to
+the app menu and installs the Cinnamon panel applet. ddcutil gives the
+logged-in user access to the monitors, so nothing else needs setting up.
+`sudo apt remove lights` uninstalls it; your presets in
+`~/.config/lights/config.toml` are kept.
+
+### From source
+
 Runtime requirements: `ddcutil` (≥ 1.4.1) with your monitors reachable on
 their I2C/EDID DDC bus (e.g. `/dev/i2c-8`, `/dev/i2c-10`), and GTK 4 for the
 desktop UI (preinstalled on GNOME, Cinnamon and most desktops).
@@ -19,7 +38,8 @@ sudo apt install ddcutil libgtk-4-dev build-essential   # Debian / Ubuntu / Mint
 cargo install --locked --path crates/lights
 ```
 
-This installs `lights` and `lights-gui` into `~/.cargo/bin`. `--locked`
+This installs `lights` and `lights-gui` into `~/.cargo/bin` (on your `PATH`
+once rustup is set up), without the app menu entry or the applet. `--locked`
 builds exactly the dependency versions recorded in `Cargo.lock` (direct
 dependencies are also pinned to exact versions in `Cargo.toml`); without it,
 `cargo install` would resolve newer ones. The icons and
@@ -157,11 +177,29 @@ lights       # TUI, from a real terminal (or lights tui)
 `applet/lights@armandburger/` is a Cinnamon panel applet. Its menu has a
 slider per monitor, the presets and *Open lights*. Scrolling on its icon
 steps every monitor by 5%. It runs the `lights` command (from `PATH`, else
-`~/.cargo/bin`), one call at a time. To try it, link it into place and add
-it from *Applets*:
+`~/.cargo/bin`), one call at a time. The `.deb` installs it: right-click
+the panel, choose *Applets* and add *lights*. From a source checkout, link
+it into place first:
 
 ```bash
 ln -s "$PWD/applet/lights@armandburger" ~/.local/share/cinnamon/applets/
+```
+
+## Releasing
+
+Bump `version` in `Cargo.toml`, commit, then tag and push:
+
+```bash
+git tag v0.2.0 && git push origin v0.2.0
+```
+
+The release workflow checks the tag matches the version, runs the tests,
+builds the `.deb` with [cargo-deb](https://github.com/kornelski/cargo-deb)
+on Ubuntu 24.04 and attaches it to a GitHub release. To build one locally:
+
+```bash
+cargo install --locked cargo-deb
+cargo deb -p lights --locked     # target/debian/lights_<version>-1_amd64.deb
 ```
 
 ## Notes
@@ -203,7 +241,8 @@ lights/
     ├── lights-tui/          # ratatui + crossterm terminal UI
     ├── lights-gui/          # GTK 4 desktop UI
     │   └── assets/          # style.css and Fluent UI System Icons (MIT), compiled in
-    └── lights/              # the `lights` and `lights-gui` binaries (clap CLI)
+    └── lights/              # the `lights` and `lights-gui` binaries (clap CLI),
+                             # .deb packaging and the desktop entry
 applet/
 └── lights@armandburger/     # Cinnamon panel applet (runs the `lights` command)
 ```
@@ -213,9 +252,7 @@ Run the tests with `cargo test --locked --workspace`.
 ## Roadmap
 
 Done: brightness CLI, interactive TUI and GTK 4 desktop UI, in Rust;
-relative linking, presets and a Cinnamon panel applet.
-
-Planned: installation (desktop entry, icon and applet).
+relative linking, presets, a Cinnamon panel applet and a `.deb` package.
 
 ## License
 

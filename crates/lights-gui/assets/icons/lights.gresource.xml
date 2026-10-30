@@ -10,4 +10,7 @@
     <file alias="ic_fluent_link_24_filled-symbolic.svg">hicolor/scalable/actions/ic_fluent_link_24_filled-symbolic.svg</file>
     <file alias="ic_fluent_link_dismiss_24_filled-symbolic.svg">hicolor/scalable/actions/ic_fluent_link_dismiss_24_filled-symbolic.svg</file>
   </gresource>
+  <gresource prefix="/io/github/armandburger/lights/icons/scalable/apps">
+    <file alias="io.github.armandburger.lights.svg">hicolor/scalable/apps/io.github.armandburger.lights.svg</file>
+  </gresource>
 </gresources>
