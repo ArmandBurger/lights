@@ -16,15 +16,18 @@ GTK 4 development files:
 
 ```bash
 sudo apt install ddcutil libgtk-4-dev build-essential   # Debian / Ubuntu / Mint
-cargo install --path crates/lights
+cargo install --locked --path crates/lights
 ```
 
-This installs `lights` and `lights-gui` into `~/.cargo/bin`. The icons and
+This installs `lights` and `lights-gui` into `~/.cargo/bin`. `--locked`
+builds exactly the dependency versions recorded in `Cargo.lock` (direct
+dependencies are also pinned to exact versions in `Cargo.toml`); without it,
+`cargo install` would resolve newer ones. The icons and
 licence texts are compiled into the binary, so it can be copied anywhere.
 For a terminal-only build without GTK:
 
 ```bash
-cargo install --path crates/lights --no-default-features --features tui
+cargo install --locked --path crates/lights --no-default-features --features tui
 ```
 
 ## CLI
@@ -165,7 +168,7 @@ lights/
     └── lights/              # the `lights` and `lights-gui` binaries (clap CLI)
 ```
 
-Run the tests with `cargo test --workspace`.
+Run the tests with `cargo test --locked --workspace`.
 
 ## Roadmap
 

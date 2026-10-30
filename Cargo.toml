@@ -15,13 +15,16 @@ repository = "https://github.com/ArmandBurger/lights"
 lights-core = { path = "crates/lights-core" }
 lights-tui = { path = "crates/lights-tui" }
 lights-gui = { path = "crates/lights-gui" }
-async-channel = "2.5"
-clap = { version = "4.6", features = ["derive"] }
-glib-build-tools = "0.22"
-gtk = { package = "gtk4", version = "0.11", features = ["v4_12"] }
-ratatui = "0.30"
-serde_json = { version = "1.0", features = ["preserve_order"] }
+async-channel = "=2.5.0"
+clap = { version = "=4.6.7", features = ["derive"] }
+glib-build-tools = "=0.22.8"
+gtk = { package = "gtk4", version = "=0.11.5", features = ["v4_12"] }
+ratatui = "=0.30.2"
+serde_json = { version = "=1.0.154", features = ["preserve_order"] }
 
 [profile.release]
-lto = true
+opt-level = "z" # Smol
+debug = false
 strip = true
+lto = true
+codegen-units = 1
