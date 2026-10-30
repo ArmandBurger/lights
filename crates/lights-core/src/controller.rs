@@ -332,6 +332,13 @@ impl Inner {
                 Some(base) => {
                     let target = brightness::clamp(compute(base));
                     let buses = if st.locked { st.buses() } else { vec![bus] };
+                    let buses: Vec<u32> = buses
+                        .into_iter()
+                        .filter(|&b| st.shown(b) != Some(target))
+                        .collect();
+                    if buses.is_empty() {
+                        return;
+                    }
                     for b in buses {
                         self.queue(&mut st, b, target);
                     }
@@ -627,6 +634,24 @@ mod tests {
         wait_until(|| idle(&c));
         assert_eq!(fake.value(100), Some(40));
         assert_eq!(fake.value(101), Some(40));
+    }
+
+    #[test]
+    fn stepping_past_the_limits_does_nothing() {
+        let (c, _) = loaded(Duration::ZERO);
+        c.set_level(100, Some(100));
+        c.set_level(0, Some(101));
+        wait_until(|| idle(&c));
+        c.step(1, 5, Some(100));
+        c.step(-1, 5, Some(101));
+        assert!(idle(&c));
+
+        c.toggle_lock(); // selected monitor is at 100%
+        wait_until(|| idle(&c));
+        c.step(1, 5, None);
+        assert!(idle(&c));
+        c.step(-1, 5, None);
+        assert!(!idle(&c));
     }
 
     #[test]
